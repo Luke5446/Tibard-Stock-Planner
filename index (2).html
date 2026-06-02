@@ -1,0 +1,1098 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tibard – Clockwork Stock Tracker</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;background:#f4f6f9;color:#111827;font-size:14px}
+header{background:#1F3864;color:#fff;padding:12px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+header h1{font-size:16px;font-weight:600}
+.toolbar{background:#fff;border-bottom:1px solid #dde3ed;padding:8px 20px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.sbar{background:#EBF3FB;border-bottom:1px solid #bdd5f0;padding:7px 20px;display:none;align-items:center;gap:14px;flex-wrap:wrap;font-size:12px}
+.sbar label{color:#1F3864;font-weight:600}
+.sbar input[type=date]{padding:4px 8px;border:1px solid #c8d0df;border-radius:5px;font-size:12px;font-family:Arial,sans-serif;background:#fff}
+.sbar .hint{font-size:11px;color:#4b5563}
+.btn{display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:6px;border:1px solid #c8d0df;background:#fff;color:#111827;font-size:13px;cursor:pointer;font-family:Arial,sans-serif;transition:background .1s}
+.btn:hover{background:#f0f3f8}
+.btn-p{background:#1F3864;color:#fff;border-color:#1F3864}
+.btn-p:hover{background:#162b50}
+.main{padding:14px 20px}
+/* stats */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:12px}
+.stat{background:#fff;border-radius:7px;padding:9px 12px;border:1px solid #dde3ed}
+.stat-lbl{font-size:10px;color:#4b5563;margin-bottom:2px;line-height:1.3}
+.stat-val{font-size:20px;font-weight:700}
+/* panels */
+.panel{background:#fff;border-radius:8px;border:1px solid #dde3ed;margin-bottom:12px;overflow:hidden}
+.ph{background:#1F3864;color:#fff;padding:9px 14px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none}
+.ph h2{font-size:13px;font-weight:600}
+.ph .sub{font-size:11px;opacity:.75}
+.pb{padding:12px 14px;display:none}
+.pb.open{display:block}
+/* container capacity */
+.ctypes{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:10px}
+.ctype{border:2px solid #dde3ed;border-radius:7px;padding:9px 11px;cursor:pointer;transition:all .15s;position:relative}
+.ctype:hover{border-color:#2E75B6;background:#f0f7ff}
+.ctype.sel{border-color:#1F3864;background:#e8f0fb}
+.ctype h3{font-size:12px;font-weight:700;color:#1F3864}
+.ctype .cap{font-size:18px;font-weight:700;color:#1F3864;margin:3px 0 1px}
+.ctype p{font-size:10px;color:#4b5563}
+.ctype .tick{display:none;position:absolute;top:6px;right:8px;color:#1F3864;font-weight:700}
+.ctype.sel .tick{display:block}
+.csum-g{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:7px;margin-bottom:8px}
+.csi{background:#f0f7ff;border-radius:5px;padding:7px 9px;border:1px solid #bdd5f0;text-align:center}
+.csi .cv{font-size:18px;font-weight:700}
+.csi .cl{font-size:10px;color:#4b5563;margin-top:1px}
+.ftrack{height:16px;border-radius:4px;background:#e5e7eb;overflow:hidden;margin:3px 0}
+.ffill{height:100%;border-radius:4px;display:flex;align-items:center;justify-content:flex-end;padding-right:5px;transition:width .3s}
+.ffill span{font-size:10px;font-weight:700;color:#fff}
+.owarn{background:#fee2e2;border:1px solid #fca5a5;border-radius:4px;padding:3px 7px;font-size:11px;color:#b91c1c;margin-top:3px;font-weight:600}
+/* po tracker */
+.po-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:8px;margin-bottom:10px}
+.poc{background:#f8fafc;border:1px solid #dde3ed;border-radius:7px;padding:9px 11px;position:relative}
+.poc-ref{font-size:13px;font-weight:700;color:#1F3864}
+.poc-date{font-size:11px;color:#4b5563;margin:1px 0}
+.poc-wks{display:inline-block;font-size:10px;padding:1px 6px;border-radius:12px;font-weight:600;margin-bottom:4px}
+.poc-del{position:absolute;top:6px;right:7px;background:none;border:none;cursor:pointer;color:#9ca3af;font-size:13px;padding:1px 4px;border-radius:3px}
+.poc-del:hover{background:#fee2e2;color:#b91c1c}
+/* proj table */
+.ptbl{width:100%;border-collapse:collapse;font-size:11px}
+.ptbl th{background:#f0f3f8;color:#4b5563;font-weight:600;padding:5px 7px;border-bottom:1px solid #dde3ed;font-size:10px;white-space:nowrap}
+.ptbl th:nth-child(-n+3){text-align:left}
+.ptbl td{padding:4px 7px;border-bottom:1px solid #f0f3f8;text-align:right}
+.ptbl td:nth-child(-n+3){text-align:left}
+.ptbl tr:last-child td{border-bottom:none}
+.ptbl tr:hover td{background:#fafbfd}
+/* runway */
+.rwi{background:#fff;border:1px solid #dde3ed;border-radius:7px;margin-bottom:6px;overflow:hidden}
+.rwi-h{padding:8px 12px;display:flex;align-items:center;gap:8px;cursor:pointer}
+.rwi-h:hover{background:#fafbfd}
+.rwi-code{font-weight:700;font-size:12px;color:#1F3864;min-width:130px;flex-shrink:0}
+.rwi-desc{font-size:11px;color:#4b5563;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rwi-bgs{display:flex;gap:5px;align-items:center;flex-shrink:0;flex-wrap:wrap}
+.rwi-chev{color:#9ca3af;font-size:10px;flex-shrink:0;transition:transform .15s}
+.rwi-b{display:none;border-top:1px solid #f0f3f8;padding:0 12px 10px}
+.rwi-b.open{display:block}
+/* runway table */
+.rwtbl-wrap{overflow-x:auto;width:100%;margin-top:8px}
+.rwtbl{width:100%;min-width:580px;border-collapse:collapse;font-size:11px}
+.rwtbl th{background:#f0f3f8;color:#4b5563;font-weight:600;padding:5px 7px;border-bottom:1px solid #dde3ed;font-size:10px;white-space:nowrap;text-align:right}
+.rwtbl th:nth-child(-n+2){text-align:left}
+.rwtbl td{padding:4px 7px;border-bottom:1px solid #f0f3f8;text-align:right;white-space:nowrap}
+.rwtbl td:nth-child(-n+2){text-align:left}
+.rwtbl tr:last-child td{border-bottom:none}
+.rwtbl tr.rw-neg td{background:#fef2f2}
+.rwtbl tr.rw-arr td{background:#f0fdf4}
+.rwtbl tr.rw-warn td{background:#fffbeb}
+/* modal */
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:200;align-items:center;justify-content:center}
+.modal-bg.open{display:flex}
+.modal-box{background:#fff;border-radius:9px;width:min(1000px,98vw);max-height:92vh;overflow:hidden;display:flex;flex-direction:column}
+.modal-box.sm{width:min(500px,96vw)}
+.mhdr{background:#1F3864;color:#fff;padding:11px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.mhdr h3{font-size:14px;font-weight:600}
+.mclose{background:none;border:none;color:#fff;font-size:22px;cursor:pointer;line-height:1;padding:0 2px;opacity:.8}
+.mclose:hover{opacity:1}
+.mbody{padding:14px 16px;overflow-y:auto}
+.mmeta{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px;font-size:12px;color:#4b5563}
+.mmeta strong{color:#111827}
+/* badges */
+.badge{display:inline-block;font-size:10px;padding:2px 7px;border-radius:15px;font-weight:600;white-space:nowrap}
+.br{background:#fde8e8;color:#b91c1c}
+.ba{background:#fef3c7;color:#92400e}
+.bg{background:#d1fae5;color:#065f46}
+.bb{background:#dbeafe;color:#1e40af}
+.bgr{background:#f1f5f9;color:#475569}
+.bp{background:#ede9fe;color:#5b21b6}
+.bos{background:#ecfdf5;color:#166534}
+/* table */
+.filters{display:flex;align-items:center;gap:7px;margin-bottom:8px;flex-wrap:wrap}
+.filters input,.filters select{font-size:12px;padding:6px 9px;border-radius:5px;border:1px solid #c8d0df;background:#fff;color:#111827;font-family:Arial,sans-serif}
+.filters input{min-width:180px}
+.rc{font-size:11px;color:#6b7280;margin-left:auto}
+.twrap{background:#fff;border-radius:7px;border:1px solid #dde3ed;overflow:hidden}
+.tscroll{overflow-x:auto}
+table.main{width:100%;border-collapse:collapse;font-size:12px;min-width:1050px}
+table.main th{background:#f0f3f8;color:#4b5563;font-weight:600;font-size:10px;padding:7px 8px;text-align:left;border-bottom:1px solid #dde3ed;white-space:nowrap;cursor:pointer;user-select:none;text-transform:uppercase;letter-spacing:.3px}
+table.main th:hover{color:#111827;background:#e6eaf2}
+table.main th.ns{cursor:default}
+table.main th.ns:hover{color:#4b5563;background:#f0f3f8}
+table.main td{padding:6px 8px;border-bottom:1px solid #f0f3f8;vertical-align:middle;color:#111827}
+table.main tr:last-child td{border-bottom:none}
+table.main tr.clickable:hover td{background:#f0f7ff;cursor:pointer}
+.row-obs td{color:#9ca3af;background:#fafafa}
+.row-req td{background:#fffbf0}
+.row-excl{opacity:.4}
+.wks-bar{display:flex;align-items:center;gap:5px}
+.wks-track{flex:1;height:5px;border-radius:2px;background:#e5e7eb;min-width:35px}
+.wks-fill{height:100%;border-radius:2px}
+.wks-num{font-size:11px;min-width:26px;text-align:right;font-weight:700}
+.air-qty{font-weight:700;color:#c2410c}
+.cont-qty{font-weight:700;color:#1e40af}
+/* carton controls */
+.inc-btn{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:3px;border:1px solid #c8d0df;background:#fff;color:#111827;font-size:12px;cursor:pointer;font-family:Arial,sans-serif;line-height:1;padding:0}
+.inc-btn:hover{background:#e8f0fb;border-color:#2E75B6}
+.carton-input{width:34px;text-align:center;font-weight:700;font-size:12px;border:1px solid #c8d0df;border-radius:3px;padding:1px 2px;font-family:Arial,sans-serif;color:#111827}
+.air-input{width:54px;text-align:center;font-weight:700;font-size:12px;border:1px solid #f5c08a;border-radius:3px;padding:1px 2px;font-family:Arial,sans-serif;color:#c2410c}
+.cc{display:flex;align-items:center;justify-content:center;gap:2px}
+.inc-cb{width:14px;height:14px;cursor:pointer;accent-color:#1F3864}
+/* paste / form */
+.pbox{background:#fff;border-radius:7px;border:1px solid #dde3ed;padding:12px 14px;margin-bottom:12px}
+.pbox h3{font-size:13px;font-weight:600;margin-bottom:6px;color:#1F3864}
+.pbox p{font-size:11px;color:#4b5563;margin-bottom:7px;line-height:1.6}
+.pbox code{background:#f0f3f8;padding:1px 4px;border-radius:3px;font-family:monospace;font-size:11px;color:#1F3864}
+textarea{width:100%;min-height:75px;font-size:11px;font-family:monospace;padding:8px;border:1px solid #c8d0df;border-radius:5px;background:#fafbfd;color:#111827;resize:vertical;margin-bottom:7px}
+.uzone{background:#fff;border:2px dashed #c8d0df;border-radius:7px;padding:22px;text-align:center;margin-bottom:12px}
+.uzone h2{font-size:14px;margin-bottom:5px;color:#1F3864}
+.uzone p{font-size:12px;color:#4b5563;margin-bottom:2px}
+.uzone small{font-size:10px;color:#6b7280;line-height:1.5;display:block}
+.foot{font-size:10px;color:#6b7280;margin-top:5px;line-height:1.5}
+.hidden{display:none}
+/* export grid */
+.egrid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:10px}
+.egrid label{display:block;font-size:11px;color:#4b5563;font-weight:600;margin-bottom:3px}
+.egrid input{width:100%;padding:6px 9px;border:1px solid #c8d0df;border-radius:5px;font-size:12px;font-family:Arial,sans-serif}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>&#128230; Tibard &mdash; Clockwork Stock Tracker</h1>
+    <span id="lastUpdated" style="font-size:11px;opacity:.7"></span>
+  </div>
+  <div style="display:flex;gap:6px;align-items:center">
+    <span id="saveInd" style="font-size:10px;opacity:.6"></span>
+    <button class="btn" style="color:#fff;border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.12);font-size:12px" onclick="showExport()">&#8659; Export container</button>
+    <button class="btn" style="color:#fff;border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.12);font-size:12px" onclick="showAirExport()">&#9992; Export air freight</button>
+    <button class="btn" style="color:#fff;border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.12);font-size:12px" onclick="clearAll()">&#128465; Clear</button>
+  </div>
+</header>
+
+<div class="toolbar">
+  <button class="btn btn-p" id="pasteBtn" onclick="togglePaste()">&#9998; Paste stock data from Sage</button>
+  <div style="margin-left:auto;font-size:11px;color:#4b5563">Target: <strong>12 wks</strong> &nbsp;|&nbsp; Air lead: <strong>2 wks</strong> &nbsp;|&nbsp; Container lead: <strong>12 wks</strong></div>
+</div>
+
+<div class="sbar" id="sbar">
+  <label>&#128679; Next container arrival:</label>
+  <input type="date" id="nextDate" onchange="onDateChange()">
+  <span class="hint" id="dateHint"></span>
+  <button class="btn" style="font-size:11px;padding:3px 9px" onclick="resetDate()">&#8635; Reset 12 wks</button>
+</div>
+
+<div class="main">
+
+  <!-- Stock paste panel -->
+  <div id="pastePanel" class="pbox hidden">
+    <h3>&#9998; Paste stock data</h3>
+    <p>Select <code>A9:R234</code> in Stock 2026 tab &rarr; Ctrl+C &rarr; click below &rarr; Ctrl+V<br>
+    Cols: <code>A</code>=Code &nbsp;<code>E</code>=Desc &nbsp;<code>F</code>=Carton &nbsp;<code>H</code>=6mth Sales &nbsp;<code>L</code>=On PO &nbsp;<code>P</code>=Free Stock &nbsp;<code>Q</code>=Flag(OBS/REQ) &nbsp;<code>R</code>=On SOP</p>
+    <textarea id="pasteTA" placeholder="Click here then Ctrl+V..."></textarea>
+    <div style="display:flex;gap:6px">
+      <button class="btn btn-p" id="loadBtn" onclick="loadPaste()">&#10003; Load data</button>
+      <button class="btn" onclick="togglePaste()">Cancel</button>
+    </div>
+  </div>
+
+  <div id="uzone" class="uzone">
+    <h2>&#128196; Ready to load stock data</h2>
+    <p>Click <strong>Paste stock data from Sage</strong> above</p>
+    <small>Select A9:R234 &rarr; Ctrl+C &rarr; Paste &nbsp;|&nbsp; Col Q=Flag(OBS/REQ) &nbsp;Col R=On SOP</small>
+  </div>
+
+  <div id="dataWrap" class="hidden">
+
+    <div class="stats" id="statsBar"></div>
+
+    <!-- Container Capacity -->
+    <div class="panel">
+      <div class="ph" onclick="togglePB('capPB')"><h2>&#128682; Container Capacity Planner</h2><span class="sub" id="capSub">Click to expand</span></div>
+      <div class="pb" id="capPB">
+        <div class="ctypes">
+          <div class="ctype" id="ct20" onclick="selCt('20ft',368)"><div class="tick">&#10003;</div><h3>20ft</h3><div class="cap">368</div><p>cartons</p></div>
+          <div class="ctype" id="ct40" onclick="selCt('40ft',750)"><div class="tick">&#10003;</div><h3>40ft</h3><div class="cap">750</div><p>cartons</p></div>
+          <div class="ctype" id="ct40hc" onclick="selCt('40ft HC',850)"><div class="tick">&#10003;</div><h3>40ft HC</h3><div class="cap">850</div><p>cartons</p></div>
+        </div>
+        <div id="capSum" class="hidden">
+          <div class="csum-g">
+            <div class="csi"><div class="cv" id="cs-c" style="color:#1F3864">0</div><div class="cl">Actual cartons</div></div>
+            <div class="csi"><div class="cv" id="cs-u" style="color:#1F3864">0</div><div class="cl">Total units</div></div>
+            <div class="csi"><div class="cv" id="cs-cap" style="color:#4b5563">0</div><div class="cl">Capacity</div></div>
+            <div class="csi"><div class="cv" id="cs-r" style="color:#065f46">0</div><div class="cl">Spare / over</div></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:#374151;margin-bottom:2px"><span id="capTitle">Fill</span><span id="cs-pct">0%</span></div>
+          <div class="ftrack"><div class="ffill" id="fillBar" style="width:0%"><span id="fillLbl"></span></div></div>
+          <div id="owarn" class="owarn hidden">&#9888; Exceeds capacity — split or upgrade container.</div>
+          <p style="font-size:10px;color:#6b7280;margin-top:5px">Based on Actual cartons column. Only ticked rows counted.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Container PO Tracker -->
+    <div class="panel">
+      <div class="ph" onclick="togglePB('poPB')"><h2>&#128667; Container PO Tracker</h2><span class="sub" id="poSub">Click to expand</span></div>
+      <div class="pb" id="poPB">
+        <div id="poCards" class="po-cards"></div>
+        <button class="btn btn-p" style="font-size:12px" onclick="showPOForm()">&#43; Add container PO</button>
+        <div id="poForm" class="pbox hidden" style="margin-top:10px">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px">
+            <div><label style="display:block;font-size:11px;color:#4b5563;font-weight:600;margin-bottom:3px">Container reference</label>
+            <input type="text" id="poRef" placeholder="e.g. C125" style="width:100%;padding:6px 9px;border:1px solid #c8d0df;border-radius:5px;font-size:12px;font-family:Arial,sans-serif"></div>
+            <div><label style="display:block;font-size:11px;color:#4b5563;font-weight:600;margin-bottom:3px">Arrival date at Tibard</label>
+            <input type="date" id="poDate" style="width:100%;padding:6px 9px;border:1px solid #c8d0df;border-radius:5px;font-size:12px;font-family:Arial,sans-serif"></div>
+          </div>
+          <p style="font-size:11px;color:#4b5563;margin-bottom:5px">Select columns <code>B through F</code> from row 4 down in your container Excel &rarr; Ctrl+C &rarr; paste below</p>
+          <textarea id="poTA" placeholder="Paste container SKU/qty data..."></textarea>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-p" style="font-size:12px" onclick="savePO()">&#10003; Save</button>
+            <button class="btn" style="font-size:12px" onclick="hidePOForm()">Cancel</button>
+          </div>
+        </div>
+        <div id="projWrap" class="hidden" style="margin-top:12px">
+          <div style="display:flex;align-items:center;gap:9px;margin-bottom:6px;flex-wrap:wrap">
+            <strong style="font-size:12px;color:#1F3864">&#128200; Projected Stock on Arrival</strong>
+            <select id="projF" onchange="renderProj()" style="font-size:11px;padding:4px 7px;border:1px solid #c8d0df;border-radius:5px;font-family:Arial,sans-serif"></select>
+            <label style="font-size:11px;color:#4b5563;display:flex;align-items:center;gap:3px"><input type="checkbox" id="projShort" onchange="renderProj()"> Issues only</label>
+          </div>
+          <div style="overflow-x:auto;border:1px solid #dde3ed;border-radius:7px">
+            <table class="ptbl"><thead><tr>
+              <th style="text-align:left">SKU</th><th style="text-align:left">Description</th><th style="text-align:left">Container</th>
+              <th>Arrives</th><th>Wks away</th><th>Free stk</th><th>Used</th><th>On cont</th><th>Proj stk</th><th>Proj wks</th><th>Status</th><th>Need next PO</th>
+            </tr></thead><tbody id="projBody"></tbody></table>
+          </div>
+          <p class="foot">Proj stock = Free − (weekly use × weeks away) + container qty. Need next PO = units for 12 wks cover from arrival.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Weekly Runway -->
+    <div class="panel">
+      <div class="ph" onclick="togglePB('rwPB')"><h2>&#128200; Weekly Stock Runway</h2><span class="sub">Click any table row for popup &nbsp;|&nbsp; Expand for all active items</span></div>
+      <div class="pb open" id="rwPB">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:9px;flex-wrap:wrap">
+          <input type="text" id="rwSearch" placeholder="&#128269; Filter..." oninput="renderRW()" style="font-size:12px;padding:5px 9px;border-radius:5px;border:1px solid #c8d0df;background:#fff;min-width:170px;font-family:Arial,sans-serif">
+          <label style="font-size:11px;color:#4b5563;display:flex;align-items:center;gap:3px"><input type="checkbox" id="rwProb" onchange="renderRW()"> Issues only</label>
+          <span style="font-size:11px;color:#6b7280;margin-left:auto" id="rwCnt"></span>
+        </div>
+        <div id="rwItems"></div>
+      </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="filters">
+      <input type="text" id="srch" placeholder="&#128269; Search code or description..." oninput="renderTable()">
+      <select id="sfilt" onchange="renderTable()">
+        <option value="">All items</option>
+        <option value="active">Active only (hide OBS &amp; REQ)</option>
+        <option value="critical">Critical (&#8804;4 wks)</option>
+        <option value="low">Low (4&#8211;8 wks)</option>
+        <option value="ok">OK (8&#8211;12 wks)</option>
+        <option value="healthy">Healthy (12&#8211;25 wks)</option>
+        <option value="overstock">Overstock (25+ wks)</option>
+        <option value="obsolete">Obsolete only</option>
+        <option value="request">On request only</option>
+      </select>
+      <select id="ofilt" onchange="renderTable()">
+        <option value="">All items</option>
+        <option value="air">Needs air freight</option>
+        <option value="cont">Needs container order</option>
+        <option value="onsop">Has On SOP</option>
+        <option value="onpo">Has On PO</option>
+        <option value="oncont">On a container PO</option>
+      </select>
+      <button class="btn" onclick="clearFilt()" style="font-size:11px;padding:4px 9px">&#10005; Clear</button>
+      <button class="btn" onclick="tickAll(false)" style="font-size:11px;padding:4px 9px">&#9744; Untick all</button>
+      <button class="btn" onclick="tickAll(true)" style="font-size:11px;padding:4px 9px">&#9745; Tick all</button>
+      <span class="rc" id="rc"></span>
+    </div>
+
+    <div class="twrap"><div class="tscroll">
+      <table class="main" id="mainTbl">
+        <thead><tr>
+          <th class="ns" style="width:28px;text-align:center">&#10003;</th>
+          <th onclick="sBy('code')" style="width:100px">Code &#8597;</th>
+          <th onclick="sBy('desc')" style="width:185px">Description &#8597;</th>
+          <th onclick="sBy('free')" style="width:60px;text-align:right">Free stk &#8597;</th>
+          <th onclick="sBy('weeklyUsage')" style="width:55px;text-align:right">Wkly use &#8597;</th>
+          <th onclick="sBy('weeksOfCover')" style="width:105px">Curr wks &#8597;</th>
+          <th onclick="sBy('onSOP')" style="width:48px;text-align:right">On SOP &#8597;</th>
+          <th onclick="sBy('onPO')" style="width:48px;text-align:right">On PO &#8597;</th>
+          <th onclick="sBy('onContainer')" style="width:52px;text-align:right">On cont &#8597;</th>
+          <th class="ns" style="width:80px">Status</th>
+          <th onclick="sBy('actAir')" style="width:120px;text-align:center;color:#c2410c">&#9992; Air qty &#8597;</th>
+          <th onclick="sBy('containerOrderQty')" style="width:70px;text-align:right;color:#1e40af">&#128682; Cont qty &#8597;</th>
+          <th onclick="sBy('actCartons')" style="width:72px;text-align:right;color:#1e40af">&#128682; Act units &#8597;</th>
+          <th onclick="sBy('adjCartons')" style="width:70px;text-align:right">Rec crt &#8597;</th>
+          <th class="ns" style="width:145px;text-align:center">Actual cartons</th>
+        </tr></thead>
+        <tbody id="tBody"></tbody>
+      </table>
+    </div></div>
+    <p class="foot">
+      &#9992; <strong style="color:#c2410c">Air qty</strong> = units to prevent stock running out over 12 wks (2 wk lead).
+      &#128682; <strong style="color:#1e40af">Cont qty</strong> = units so next container gives 12 wks cover on arrival.
+      <strong>Rec crt</strong> = recommended cartons (calculated). <strong>Actual cartons</strong> = your adjusted figure used in export.
+      Click any row for runway popup.
+    </p>
+
+  </div>
+</div>
+
+<!-- Runway modal -->
+<div class="modal-bg" id="rwModal">
+  <div class="modal-box">
+    <div class="mhdr"><h3 id="rwTitle">Weekly Runway</h3><button class="mclose" id="rwClose">&times;</button></div>
+    <div class="mbody"><div class="mmeta" id="rwMeta"></div><div id="rwContent"></div></div>
+  </div>
+</div>
+
+<!-- Export modal -->
+<div class="modal-bg" id="expModal">
+  <div class="modal-box sm">
+    <div class="mhdr"><h3>&#8659; Export Container Order</h3><button class="mclose" onclick="closeExp()">&times;</button></div>
+    <div class="mbody">
+      <p style="font-size:12px;color:#4b5563;margin-bottom:10px">Exports all ticked rows with Actual cartons &gt; 0.</p>
+      <div class="egrid">
+        <div><label>Container reference</label><input type="text" id="expRef" placeholder="e.g. Container 125"></div>
+        <div><label>Dispatch date (loading)</label><input type="date" id="expDisp"></div>
+        <div><label>Arrival date at Tibard</label><input type="date" id="expArr"></div>
+        <div><label>Notes (optional)</label><input type="text" id="expNotes" placeholder="Any notes"></div>
+      </div>
+      <div style="background:#f0f7ff;border:1px solid #bdd5f0;border-radius:6px;padding:9px;margin-bottom:10px;font-size:12px;color:#1F3864"><strong id="expSum"></strong></div>
+      <div style="display:flex;gap:6px;justify-content:flex-end">
+        <button class="btn" onclick="closeExp()">Cancel</button>
+        <button class="btn btn-p" onclick="doExport()">&#8659; Download CSV</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Air freight export modal -->
+<div class="modal-bg" id="airModal">
+  <div class="modal-box sm">
+    <div class="mhdr"><h3>&#9992; Export Air Freight Order</h3><button class="mclose" onclick="closeAir()">&times;</button></div>
+    <div class="mbody">
+      <p style="font-size:12px;color:#4b5563;margin-bottom:10px">Exports all ticked rows with an Air freight qty &gt; 0.</p>
+      <div class="egrid">
+        <div><label>Air order reference</label><input type="text" id="airRef" placeholder="e.g. AIR-001"></div>
+        <div><label>Required by date</label><input type="date" id="airDate"></div>
+      </div>
+      <div style="background:#fff7ed;border:1px solid #f5c08a;border-radius:6px;padding:9px;margin-bottom:10px;font-size:12px;color:#c2410c"><strong id="airSum"></strong></div>
+      <div style="display:flex;gap:6px;justify-content:flex-end">
+        <button class="btn" onclick="closeAir()">Cancel</button>
+        <button class="btn btn-p" onclick="doAirExport()">&#8659; Download CSV</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+var rows = [], cPOs = [], sortCol = 'weeksOfCover', sortAsc = true;
+var TARGET = 12, RWWKS = 20;
+var selCtName = null, selCtCap = 0, nextContDate = null;
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function pn(s){ return parseFloat((s||'').toString().replace(/[",\s]/g,''))||0; }
+function fC(n){ return n===Math.floor(n)?n.toString():n.toFixed(2).replace(/0$/,''); }
+function esc(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+function sid(c){ return c.replace(/[^a-zA-Z0-9]/g,'_'); }
+function now(){ return new Date(); }
+function wksUntil(ds){ return Math.max(0,(new Date(ds)-now())/(1000*60*60*24*7)); }
+function fmtD(ds){ if(!ds)return''; return new Date(ds).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}); }
+function dash(){ return '<span style="color:#e5e7eb">&mdash;</span>'; }
+function nwkday(d, wks){
+  var nd = new Date(d.getTime()+wks*7*24*60*60*1000);
+  var dy = nd.getDay();
+  if(dy===0) nd.setDate(nd.getDate()+1);
+  if(dy===6) nd.setDate(nd.getDate()+2);
+  return nd;
+}
+function d2s(d){ var y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),dd=String(d.getDate()).padStart(2,'0'); return y+'-'+m+'-'+dd; }
+
+// ── Next container date ────────────────────────────────────────────────────
+function getNextDate(){ return nextContDate ? new Date(nextContDate) : nwkday(now(),TARGET); }
+function resetDate(){ nextContDate=null; document.getElementById('nextDate').value=d2s(getNextDate()); updateHint(); recalcQtys(); renderTable(); saveState(); }
+function onDateChange(){ nextContDate=document.getElementById('nextDate').value||null; updateHint(); recalcQtys(); renderTable(); saveState(); }
+function updateHint(){ var d=getNextDate(); var w=wksUntil(d2s(d)); document.getElementById('dateHint').textContent=fmtD(d2s(d))+' ('+w.toFixed(1)+' wks away)'; }
+function initSbar(){ var sb=document.getElementById('sbar'); sb.style.display='flex'; document.getElementById('nextDate').value=d2s(getNextDate()); updateHint(); }
+
+// ── UI ─────────────────────────────────────────────────────────────────────
+function togglePaste(){
+  var p = document.getElementById('pastePanel');
+  p.classList.toggle('hidden');
+  if(!p.classList.contains('hidden')) document.getElementById('pasteTA').focus();
+}
+function togglePB(id){ document.getElementById(id).classList.toggle('open'); }
+function showPOForm(){ document.getElementById('poForm').classList.remove('hidden'); document.getElementById('poRef').focus(); }
+function hidePOForm(){ document.getElementById('poForm').classList.add('hidden'); }
+function closeExp(){ document.getElementById('expModal').classList.remove('open'); }
+
+// ── Load stock data ────────────────────────────────────────────────────────
+function loadPaste(){
+  var txt = document.getElementById('pasteTA').value.trim();
+  if(!txt){ alert('Nothing pasted — click in the box then Ctrl+V.'); return; }
+  var lines = txt.split('\n'), built = [];
+  for(var i=0; i<lines.length; i++){
+    var cols = lines[i].trim().split('\t');
+    if(cols.length < 3) continue;
+    var code = (cols[0]||'').trim();
+    if(!code || code.toLowerCase()==='code' || code.toLowerCase()==='stock code') continue;
+    // Column positions (verified from real data):
+    // [0]=Code(A) [1]=Desc(E) [2]=Carton(F) [3]=12mthSales(G) [4]=6mthSales(H)
+    // [5]=3mth [6]=1mth [7]=OnSOP(K) [8]=OnPO(L) [9]=FreeStock(P) [10]=Flag(Q) [11]=OnSOP(R)
+    var flagRaw = (cols[10]||'').trim().toUpperCase();
+    var flag = flagRaw==='OBS'?'obs': flagRaw==='REQ'?'req': '';
+    built.push(mkRow(
+      code,
+      (cols[1]||'').trim(),
+      pn(cols[2])||1,
+      pn(cols[4]),   // 6-month sales = col H = index 4
+      pn(cols[11]),  // On SOP from col R = index 11
+      pn(cols[8]),   // On PO from col L = index 8
+      pn(cols[9]),   // Free stock from col P = index 9
+      flag
+    ));
+  }
+  if(!built.length){ alert('No valid rows found.\n\nSelect A9:R234 in your Excel, Ctrl+C, then paste here.'); return; }
+  rows = built;
+  document.getElementById('pasteTA').value = '';
+  document.getElementById('pastePanel').classList.add('hidden');
+  recalcContainers();
+  recalcQtys();
+  showData();
+  saveState();
+}
+
+function mkRow(code,desc,carton,sales6m,onSOP,onPO,free,flag){
+  var ctn = Math.max(carton,1);
+  var wkly = sales6m/26;
+  var wks = wkly>0 ? (free/wkly) : 999;
+  var status = flag==='obs'?'obsolete': flag==='req'?'request':
+    wkly===0?'healthy': wks<=4?'critical': wks<=8?'low': wks<=12?'ok': wks>25?'overstock': 'healthy';
+  return { code, desc, carton:ctn, sales6m, weeklyUsage:wkly, weeksOfCover:wks,
+    onPO, onSOP, free, included:flag==='', status, flag, onContainer:0,
+    airFreightQty:0, actAir:0, airManAdj:false, containerOrderQty:0, adjCartons:0, actCartons:0, manAdj:false };
+}
+
+function showData(){
+  document.getElementById('uzone').classList.add('hidden');
+  document.getElementById('dataWrap').classList.remove('hidden');
+  initSbar();
+  document.getElementById('lastUpdated').textContent = 'Loaded: '+now().toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
+  updateStats(); renderTable(); renderPOCards(); renderProj(); renderRW(); updateCapSum();
+}
+
+// ── Order qty calculations ─────────────────────────────────────────────────
+function calcQtys(r){
+  if(r.flag!=='' || r.weeklyUsage<=0) return {air:0, cont:0};
+  var wksToCont = wksUntil(d2s(getNextDate()));
+
+  // Build existing container POs for this SKU
+  var rPOs = [];
+  cPOs.forEach(function(po){
+    var it = po.items.find(function(i){ return i.code===r.code; });
+    if(it) rPOs.push({wks:wksUntil(po.date), qty:it.qty});
+  });
+  rPOs.sort(function(a,b){ return a.wks-b.wks; });
+
+  // ── Air freight: simulate week by week to find minimum stock ──────────────
+  // This catches gaps where containers are on order but arrive too late
+  var horizon = Math.max(TARGET, Math.ceil(wksToCont)+1);
+  var stock = r.free, minStock = r.free;
+  for(var w=1; w<=horizon; w++){
+    rPOs.forEach(function(p){ if(Math.round(p.wks)===w) stock+=p.qty; });
+    stock -= r.weeklyUsage;
+    if(stock < minStock) minStock = stock;
+  }
+  // Air qty = enough to lift the minimum stock to 0 (plus 1 week buffer)
+  var airQty = minStock < 0
+    ? Math.ceil((-minStock + r.weeklyUsage) / r.carton) * r.carton
+    : 0;
+
+  // ── Container order: units so stock at next container arrival = 12 wks ────
+  var stockAtArr = r.free - (r.weeklyUsage * wksToCont);
+  rPOs.forEach(function(p){ if(p.wks<=wksToCont) stockAtArr+=p.qty; });
+  stockAtArr += airQty;
+  var contNeeded = (r.weeklyUsage * TARGET) - stockAtArr;
+  var contQty = Math.max(0, Math.ceil(contNeeded / r.carton) * r.carton);
+
+  return {air:airQty, cont:contQty};
+}
+
+function recalcQtys(){
+  rows.forEach(function(r){
+    var q = calcQtys(r);
+    r.airFreightQty = q.air;
+    r.containerOrderQty = q.cont;
+    if(!r.airManAdj) r.actAir = q.air;
+    var rec = q.cont>0 ? Math.ceil(q.cont/r.carton*4)/4 : 0;
+    r.adjCartons = rec;
+    if(!r.manAdj) r.actCartons = rec;
+  });
+}
+
+// ── Container POs ──────────────────────────────────────────────────────────
+function recalcContainers(){
+  rows.forEach(function(r){ r.onContainer=0; });
+  cPOs.forEach(function(po){
+    po.items.forEach(function(it){
+      var r = rows.find(function(x){ return x.code===it.code; });
+      if(r) r.onContainer += it.qty;
+    });
+  });
+}
+
+function savePO(){
+  var ref = (document.getElementById('poRef').value||'').trim();
+  var date = document.getElementById('poDate').value;
+  var txt = document.getElementById('poTA').value.trim();
+  if(!ref){ alert('Enter a container reference.'); return; }
+  if(!date){ alert('Enter an arrival date.'); return; }
+  if(!txt){ alert('Paste the SKU/qty data.'); return; }
+  var lines = txt.split('\n'), items = [];
+  for(var i=0; i<lines.length; i++){
+    var parts = lines[i].trim().split('\t');
+    if(parts.length<2) continue;
+    var code = (parts[0]||'').trim();
+    if(!code||code.toLowerCase()==='code'||code.toLowerCase()==='tibard stock code') continue;
+    var qty = parts.length>=5 ? pn(parts[parts.length-1]) : pn(parts[1]);
+    if(qty<=0) continue;
+    items.push({code:code, qty:qty});
+  }
+  if(!items.length){ alert('No valid rows.\n\nSelect columns B through F from your container Excel, paste here.'); return; }
+  cPOs.push({ref:ref, date:date, items:items});
+  document.getElementById('poRef').value='';
+  document.getElementById('poDate').value='';
+  document.getElementById('poTA').value='';
+  hidePOForm();
+  recalcContainers(); recalcQtys(); updateStats(); renderTable(); renderPOCards(); renderProj(); renderRW(); updateCapSum();
+  saveState();
+}
+
+function delPO(idx){
+  if(!confirm('Remove "'+cPOs[idx].ref+'"?')) return;
+  cPOs.splice(idx,1);
+  recalcContainers(); recalcQtys(); updateStats(); renderTable(); renderPOCards(); renderProj(); renderRW(); updateCapSum();
+  saveState();
+}
+
+function renderPOCards(){
+  var w = document.getElementById('poCards');
+  if(!cPOs.length){ w.innerHTML=''; return; }
+  w.innerHTML = cPOs.map(function(po,i){
+    var wks=wksUntil(po.date);
+    var wl=wks<1?'Arriving imminently':wks.toFixed(1)+' wks away';
+    var wbg=wks<2?'#fde8e8;color:#b91c1c':wks<6?'#fef3c7;color:#92400e':'#d1fae5;color:#065f46';
+    var tot=Math.round(po.items.reduce(function(s,it){return s+it.qty;},0));
+    return '<div class="poc"><button class="poc-del" onclick="delPO('+i+')">&#10005;</button>'
+      +'<div class="poc-ref">'+esc(po.ref)+'</div>'
+      +'<div class="poc-date">Arrives: '+fmtD(po.date)+'</div>'
+      +'<span class="poc-wks" style="background:'+wbg+'">'+wl+'</span>'
+      +'<div style="font-size:11px;color:#4b5563"><strong>'+po.items.length+'</strong> SKUs | <strong>'+tot.toLocaleString()+'</strong> units</div>'
+      +'</div>';
+  }).join('');
+}
+
+function renderProj(){
+  var w=document.getElementById('projWrap');
+  var sel=document.getElementById('projF');
+  var short=document.getElementById('projShort').checked;
+  var fref=sel?sel.value:'';
+  var opts='<option value="">All containers</option>';
+  cPOs.forEach(function(po){ opts+='<option value="'+esc(po.ref)+'"'+(fref===po.ref?' selected':'')+'>'+esc(po.ref)+'</option>'; });
+  sel.innerHTML=opts;
+  if(!cPOs.length){ w.classList.add('hidden'); return; }
+  w.classList.remove('hidden');
+  var prows=[];
+  cPOs.forEach(function(po){
+    if(fref&&po.ref!==fref) return;
+    var wks=wksUntil(po.date);
+    po.items.forEach(function(it){
+      var r=rows.find(function(x){return x.code===it.code;});
+      if(!r) return;
+      var used=Math.round(r.weeklyUsage*wks);
+      var proj=r.free-used+it.qty;
+      var pw=r.weeklyUsage>0?(proj/r.weeklyUsage):999;
+      var np=r.weeklyUsage>0?Math.max(0,Math.ceil((TARGET*r.weeklyUsage)-proj)):0;
+      if(short&&pw>=TARGET) return;
+      prows.push({po:po.ref,date:po.date,wks,code:r.code,desc:r.desc,free:r.free,used,qty:it.qty,proj,pw,np,ctn:r.carton,wu:r.weeklyUsage});
+    });
+  });
+  var tb=document.getElementById('projBody');
+  if(!prows.length){ tb.innerHTML='<tr><td colspan="12" style="text-align:center;padding:1rem;color:#6b7280">No issues — all items project 12+ wks on arrival</td></tr>'; return; }
+  tb.innerHTML=prows.map(function(p){
+    var pw=p.pw>=99?'99+':p.pw.toFixed(1);
+    var bc=p.pw<4?'#ef4444':p.pw<8?'#f59e0b':p.pw<12?'#3b82f6':'#10b981';
+    var cls=p.pw<4?'br':p.pw<12?'ba':'bg';
+    var np=p.np>0?'<span style="color:#b91c1c;font-weight:700">'+(Math.ceil(p.np/p.ctn)*p.ctn).toLocaleString()+' units</span>':'<span style="color:#065f46;font-weight:600">&#10003; OK</span>';
+    return '<tr>'
+      +'<td style="font-family:monospace;font-size:10px">'+esc(p.code)+'</td>'
+      +'<td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(p.desc)+'">'+esc(p.desc)+'</td>'
+      +'<td><span class="badge bb">'+esc(p.po)+'</span></td>'
+      +'<td>'+fmtD(p.date)+'</td>'
+      +'<td>'+p.wks.toFixed(1)+'</td>'
+      +'<td>'+p.free.toLocaleString()+'</td>'
+      +'<td style="color:#92400e">'+p.used.toLocaleString()+'</td>'
+      +'<td style="color:#6d28d9;font-weight:600">'+Math.round(p.qty).toLocaleString()+'</td>'
+      +'<td style="font-weight:700;color:'+(p.proj<0?'#b91c1c':'#111827')+'">'+Math.round(p.proj).toLocaleString()+'</td>'
+      +'<td><div class="wks-bar"><div class="wks-track"><div class="wks-fill" style="width:'+Math.min(p.pw/TARGET,1)*100+'%;background:'+bc+'"></div></div><span class="wks-num" style="color:'+bc+'">'+pw+'</span></div></td>'
+      +'<td><span class="badge '+cls+'">'+(p.pw<4?'Critical':p.pw<12?'Low':'OK')+'</span></td>'
+      +'<td>'+np+'</td></tr>';
+  }).join('');
+}
+
+// ── Runway ─────────────────────────────────────────────────────────────────
+function buildRW(r){
+  var cs=[];
+  cPOs.forEach(function(po){
+    var it=po.items.find(function(i){return i.code===r.code;});
+    if(it) cs.push({ref:po.ref,qty:it.qty,wks:wksUntil(po.date)});
+  });
+  cs.sort(function(a,b){return a.wks-b.wks;});
+  var rws=[], stk=r.free, n=now();
+  for(var w=0;w<=RWWKS;w++){
+    var wd=new Date(n.getTime()+w*7*24*60*60*1000);
+    var arr=cs.filter(function(c){return Math.round(c.wks)===w;});
+    var prev=stk;
+    arr.forEach(function(c){stk+=c.qty;});
+    var use=w===0?0:Math.round(r.weeklyUsage);
+    if(w>0) stk-=use;
+    rws.push({week:w,date:wd,opening:w===0?r.free:Math.round(prev),arr,use,close:Math.round(stk)});
+  }
+  return rws;
+}
+
+function rwTblHTML(r,rws){
+  var h='<div class="rwtbl-wrap"><table class="rwtbl"><thead><tr>'
+    +'<th style="text-align:left">Week</th><th style="text-align:left">Date</th>'
+    +'<th>Opening</th><th>Container arrival</th><th>Usage</th><th>Closing</th><th>Wks cover</th>'
+    +'</tr></thead><tbody>';
+  rws.forEach(function(row){
+    var cw=r.weeklyUsage>0?(row.close/r.weeklyUsage):99;
+    var rc=row.close<0?'rw-neg':row.arr.length?'rw-arr':row.close<r.weeklyUsage*4?'rw-warn':'';
+    var cs=row.close<0?'style="color:#b91c1c;font-weight:700"':cw<4?'style="color:#92400e;font-weight:700"':'style="color:#065f46;font-weight:600"';
+    var cws=row.close<=0?'<span style="color:#b91c1c;font-weight:700">&#9888; Out</span>':cw>=99?'99+':cw.toFixed(1);
+    var ah=row.arr.length
+      ?row.arr.map(function(c){return'<span style="background:#dbeafe;color:#1e40af;font-size:10px;padding:1px 5px;border-radius:10px;font-weight:600">+'+Math.round(c.qty).toLocaleString()+' '+esc(c.ref)+'</span>';}).join(' ')
+      :'<span style="color:#e5e7eb">&mdash;</span>';
+    var uh=row.week===0?'<span style="color:#d1d5db">Today</span>':'<span style="color:#92400e">'+row.use.toLocaleString()+'</span>';
+    h+='<tr class="'+rc+'"><td>Wk '+row.week+'</td>'
+      +'<td>'+row.date.toLocaleDateString('en-GB',{day:'2-digit',month:'short'})+'</td>'
+      +'<td>'+row.opening.toLocaleString()+'</td>'
+      +'<td>'+ah+'</td><td>'+uh+'</td>'
+      +'<td><span '+cs+'>'+row.close.toLocaleString()+'</span></td>'
+      +'<td>'+cws+'</td></tr>';
+  });
+  h+='</tbody></table></div>';
+  return h;
+}
+
+function openRWModal(code){
+  var r=rows.find(function(x){return x.code===code;});
+  if(!r) return;
+  var rws=buildRW(r);
+  var fn=rws.find(function(w){return w.close<0;});
+  var fa=rws.find(function(w){return w.arr.length>0;});
+  document.getElementById('rwTitle').textContent=r.code+' — Weekly Runway';
+  document.getElementById('rwMeta').innerHTML=
+    '<span>'+esc(r.desc)+'</span>'
+    +'<span>Free: <strong>'+r.free.toLocaleString()+'</strong></span>'
+    +'<span>Wkly use: <strong>'+r.weeklyUsage.toFixed(1)+'</strong></span>'
+    +'<span>Curr: <strong>'+(r.weeksOfCover>=99?'99+':r.weeksOfCover.toFixed(1))+' wks</strong></span>'
+    +(r.airFreightQty>0?'<span style="color:#c2410c;font-weight:600">&#9992; Air: '+r.airFreightQty.toLocaleString()+' units</span>':'')
+    +(r.containerOrderQty>0?'<span style="color:#1e40af;font-weight:600">&#128682; Cont: '+r.containerOrderQty.toLocaleString()+' units</span>':'')
+    +(fn?'<span style="color:#b91c1c;font-weight:600">&#9888; Goes negative Wk '+fn.week+' ('+fn.date.toLocaleDateString('en-GB',{day:'2-digit',month:'short'})+')</span>':'')
+    +(fa?'<span style="color:#1e40af;font-weight:600">&#128682; '+fa.arr.map(function(c){return c.ref;}).join(', ')+' Wk '+fa.week+'</span>':'');
+  document.getElementById('rwContent').innerHTML=rwTblHTML(r,rws);
+  document.getElementById('rwModal').classList.add('open');
+}
+
+function renderRW(){
+  var srch=(document.getElementById('rwSearch').value||'').toLowerCase();
+  var probOnly=document.getElementById('rwProb').checked;
+  var active=rows.filter(function(r){
+    return r.status!=='obsolete'&&r.status!=='request'&&r.weeklyUsage>0;
+  }).filter(function(r){
+    if(srch&&r.code.toLowerCase().indexOf(srch)<0&&r.desc.toLowerCase().indexOf(srch)<0) return false;
+    return true;
+  });
+  if(probOnly){
+    active=active.filter(function(r){
+      var rws=buildRW(r);
+      return rws.some(function(w){return w.close<0;})||r.status==='critical'||r.status==='low';
+    });
+  }
+  active.sort(function(a,b){
+    var o={critical:0,low:1,ok:2,healthy:3,overstock:4};
+    var ao=o[a.status]!==undefined?o[a.status]:5, bo=o[b.status]!==undefined?o[b.status]:5;
+    return ao!==bo?ao-bo:a.weeksOfCover-b.weeksOfCover;
+  });
+  document.getElementById('rwCnt').textContent=active.length+' items';
+  var con=document.getElementById('rwItems');
+  if(!active.length){ con.innerHTML='<p style="text-align:center;color:#6b7280;padding:1.5rem;font-size:12px">No items match filter</p>'; return; }
+  var bmap={critical:'<span class="badge br">Critical</span>',low:'<span class="badge ba">Low</span>',ok:'<span class="badge bb">OK</span>',healthy:'<span class="badge bg">Healthy</span>',overstock:'<span class="badge bos">Overstock</span>'};
+  con.innerHTML=active.map(function(r){
+    var id=sid(r.code);
+    var rws=buildRW(r);
+    var fn=rws.find(function(w){return w.close<0;});
+    var fa=rws.find(function(w){return w.arr.length>0;});
+    var nh=fn?'<span style="font-size:10px;color:#b91c1c;font-weight:600">&#9888; Out Wk '+fn.week+'</span>':'';
+    var ah=fa?'<span style="font-size:10px;color:#1e40af;font-weight:600">&#128682; '+fa.arr.map(function(c){return c.ref;}).join(', ')+' Wk '+fa.week+'</span>':'';
+    var airh=r.airFreightQty>0?'<span style="font-size:10px;color:#c2410c;font-weight:600">&#9992; '+r.airFreightQty.toLocaleString()+'u</span>':'';
+    return '<div class="rwi"><div class="rwi-h" onclick="toggleRWI(\''+id+'\')"><span class="rwi-code">'+esc(r.code)+'</span>'
+      +'<span class="rwi-desc" title="'+esc(r.desc)+'">'+esc(r.desc)+'</span>'
+      +'<div class="rwi-bgs"><span style="font-size:11px;color:#4b5563">'+(r.weeksOfCover>=99?'99+':r.weeksOfCover.toFixed(1))+' wks</span>'+(bmap[r.status]||'')+nh+ah+airh+'</div>'
+      +'<span class="rwi-chev" id="chev-'+id+'">&#9660;</span></div>'
+      +'<div class="rwi-b" id="rw-'+id+'">'+rwTblHTML(r,rws)+'</div></div>';
+  }).join('');
+}
+
+function toggleRWI(id){
+  var b=document.getElementById('rw-'+id), c=document.getElementById('chev-'+id);
+  if(b) b.classList.toggle('open');
+  if(c) c.style.transform=b.classList.contains('open')?'rotate(180deg)':'';
+}
+
+// ── Stats ──────────────────────────────────────────────────────────────────
+function updateStats(){
+  var act=rows.filter(function(r){return r.status!=='obsolete'&&r.status!=='request';});
+  document.getElementById('statsBar').innerHTML=[
+    st('Total SKUs',rows.length,'#111827'),
+    st('Critical (&#8804;4 wks)',act.filter(function(r){return r.status==='critical';}).length,'#b91c1c'),
+    st('Low (4&#8211;8 wks)',act.filter(function(r){return r.status==='low';}).length,'#92400e'),
+    st('Needs air freight',rows.filter(function(r){return r.airFreightQty>0;}).length,'#c2410c'),
+    st('Needs container',rows.filter(function(r){return r.containerOrderQty>0;}).length,'#1e40af'),
+    st('On SOP',rows.filter(function(r){return r.onSOP>0;}).length,'#374151'),
+    st('On PO/container',rows.filter(function(r){return r.onPO>0||r.onContainer>0;}).length,'#6d28d9'),
+    st('Obsolete',rows.filter(function(r){return r.status==='obsolete';}).length,'#6b7280'),
+  ].join('');
+}
+function st(l,v,c){ return '<div class="stat"><div class="stat-lbl">'+l+'</div><div class="stat-val" style="color:'+c+'">'+v+'</div></div>'; }
+
+// ── Container capacity ─────────────────────────────────────────────────────
+function selCt(name,cap){
+  ['ct20','ct40','ct40hc'].forEach(function(id){document.getElementById(id).classList.remove('sel');});
+  document.getElementById({'20ft':'ct20','40ft':'ct40','40ft HC':'ct40hc'}[name]).classList.add('sel');
+  selCtName=name; selCtCap=cap; updateCapSum();
+}
+function updateCapSum(){
+  if(!selCtCap) return;
+  var er=rows.filter(function(r){return r.included&&r.actCartons>0;});
+  var tc=Math.round(er.reduce(function(s,r){return s+r.actCartons;},0)*10)/10;
+  var tu=Math.round(er.reduce(function(s,r){return s+r.actCartons*r.carton;},0));
+  var rem=selCtCap-tc, pct=Math.min((tc/selCtCap)*100,100), over=tc>selCtCap;
+  var bc=over?'#ef4444':pct>85?'#f59e0b':pct>60?'#3b82f6':'#10b981';
+  document.getElementById('capSum').classList.remove('hidden');
+  document.getElementById('capTitle').textContent=selCtName+' fill';
+  document.getElementById('cs-c').textContent=fC(tc);
+  document.getElementById('cs-u').textContent=tu.toLocaleString();
+  document.getElementById('cs-cap').textContent=selCtCap.toLocaleString();
+  document.getElementById('cs-r').textContent=over?'Over by '+(tc-selCtCap):rem.toLocaleString();
+  document.getElementById('cs-r').style.color=over?'#b91c1c':'#065f46';
+  document.getElementById('cs-pct').textContent=((tc/selCtCap)*100).toFixed(1)+'%';
+  document.getElementById('fillBar').style.width=pct.toFixed(1)+'%';
+  document.getElementById('fillBar').style.background=bc;
+  document.getElementById('fillLbl').textContent=pct.toFixed(0)+'%';
+  document.getElementById('owarn').classList.toggle('hidden',!over);
+  document.getElementById('capSub').textContent=selCtName+': '+fC(tc)+' of '+selCtCap+' cartons ('+((tc/selCtCap)*100).toFixed(0)+'% full)';
+}
+
+// ── Row controls ───────────────────────────────────────────────────────────
+function toggleIncl(code,checked){
+  var r=rows.find(function(x){return x.code===code;});
+  if(!r) return;
+  r.included=checked;
+  var el=document.getElementById('row-'+sid(code));
+  if(el){ checked?el.classList.remove('row-excl'):el.classList.add('row-excl'); }
+  updateCapSum(); updateStats(); dbSave();
+}
+function tickAll(state){
+  // Apply to currently filtered/visible rows only
+  var srch=(document.getElementById('srch').value||'').toLowerCase();
+  var sf=document.getElementById('sfilt').value;
+  var of=document.getElementById('ofilt').value;
+  rows.forEach(function(r){
+    // Match same filter logic as renderTable
+    if(srch&&r.code.toLowerCase().indexOf(srch)<0&&r.desc.toLowerCase().indexOf(srch)<0) return;
+    if(sf==='active'&&(r.status==='obsolete'||r.status==='request')) return;
+    else if(sf&&sf!=='active'&&r.status!==sf) return;
+    if(of==='air'&&r.airFreightQty<=0) return;
+    if(of==='cont'&&r.containerOrderQty<=0) return;
+    if(of==='onsop'&&r.onSOP<=0) return;
+    if(of==='onpo'&&r.onPO<=0) return;
+    if(of==='oncont'&&r.onContainer<=0) return;
+    r.included=state;
+  });
+  renderTable(); updateCapSum(); updateStats(); dbSave();
+}
+function adjAir(code,deltaCartons){
+  var r=rows.find(function(x){return x.code===code;});
+  if(!r) return;
+  var step=r.carton*deltaCartons;
+  r.actAir=Math.max(0,Math.round(r.actAir+step));
+  r.airManAdj=true;
+  var el=document.getElementById('ai-'+sid(code));
+  if(el) el.value=r.actAir.toLocaleString();
+  updateStats(); dbSave();
+}
+function setAir(code,val){
+  var r=rows.find(function(x){return x.code===code;});
+  if(!r) return;
+  var n=parseFloat(val.replace(/[^0-9.]/g,''));
+  if(isNaN(n)||n<0) n=0;
+  r.actAir=Math.round(n);
+  r.airManAdj=true;
+  var el=document.getElementById('ai-'+sid(code));
+  if(el) el.value=r.actAir.toLocaleString();
+  updateStats(); dbSave();
+}
+function adjAct(code,delta){
+  var r=rows.find(function(x){return x.code===code;});
+  if(!r) return;
+  r.actCartons=Math.max(0,Math.round((r.actCartons+delta)*4)/4);
+  r.manAdj=true;
+  var el=document.getElementById('cv-'+sid(code));
+  if(el) el.value=fC(r.actCartons);
+  updateActUnits(code,r);
+  updateCapSum(); updateStats(); dbSave();
+}
+function setAct(code,val){
+  var r=rows.find(function(x){return x.code===code;});
+  if(!r) return;
+  var n=parseFloat(val.replace(/[^0-9.]/g,''));
+  if(isNaN(n)||n<0) n=0;
+  r.actCartons=Math.round(n*4)/4;
+  r.manAdj=true;
+  var el=document.getElementById('cv-'+sid(code));
+  if(el) el.value=fC(r.actCartons);
+  updateActUnits(code,r);
+  updateCapSum(); updateStats(); dbSave();
+}
+function updateActUnits(code,r){
+  var el=document.getElementById('au-'+sid(code));
+  if(!el) return;
+  var units=Math.round(r.actCartons*r.carton);
+  el.innerHTML=units>0?'<span style="font-weight:700;color:#1e40af">'+units.toLocaleString()+'</span>':'<span style="color:#e5e7eb">&mdash;</span>';
+}
+
+// ── Sort / filter / render ─────────────────────────────────────────────────
+function sBy(col){ if(sortCol===col)sortAsc=!sortAsc; else{sortCol=col;sortAsc=(col==='weeksOfCover');} renderTable(); }
+function clearFilt(){ document.getElementById('srch').value=''; document.getElementById('sfilt').value=''; document.getElementById('ofilt').value=''; renderTable(); }
+
+function renderTable(){
+  var srch=(document.getElementById('srch').value||'').toLowerCase();
+  var sf=document.getElementById('sfilt').value;
+  var of=document.getElementById('ofilt').value;
+  var data=rows.filter(function(r){
+    if(srch&&r.code.toLowerCase().indexOf(srch)<0&&r.desc.toLowerCase().indexOf(srch)<0) return false;
+    if(sf==='active'&&(r.status==='obsolete'||r.status==='request')) return false;
+    else if(sf&&sf!=='active'&&r.status!==sf) return false;
+    if(of==='air'&&r.airFreightQty<=0) return false;
+    if(of==='cont'&&r.containerOrderQty<=0) return false;
+    if(of==='onsop'&&r.onSOP<=0) return false;
+    if(of==='onpo'&&r.onPO<=0) return false;
+    if(of==='oncont'&&r.onContainer<=0) return false;
+    return true;
+  });
+  data.sort(function(a,b){
+    var av=a[sortCol],bv=b[sortCol];
+    if(av===undefined||av===null)av=0; if(bv===undefined||bv===null)bv=0;
+    if(typeof av==='string') return sortAsc?av.localeCompare(bv):bv.localeCompare(av);
+    return sortAsc?av-bv:bv-av;
+  });
+  document.getElementById('rc').textContent=data.length.toLocaleString()+' items shown';
+  var tb=document.getElementById('tBody');
+  if(!data.length){ tb.innerHTML='<tr><td colspan="15" style="text-align:center;padding:1.5rem;color:#6b7280">No items match</td></tr>'; return; }
+  tb.innerHTML=data.map(rowHTML).join('');
+}
+
+function rowHTML(r){
+  var wks=r.weeksOfCover, ws=wks>=99?'99+':wks.toFixed(1);
+  var pct=Math.min(wks/TARGET,1)*100;
+  var bc=wks<=4?'#ef4444':wks<=8?'#f59e0b':wks<=12?'#3b82f6':'#10b981';
+  var id=sid(r.code);
+  var statusLbl={critical:'Critical',low:'Low',ok:'OK',healthy:'Healthy',overstock:'Overstock',obsolete:'Obsolete',request:'On Request'};
+  var statusCls={critical:'br',low:'ba',ok:'bb',healthy:'bg',overstock:'bos',obsolete:'bgr',request:'bp'};
+  // Air/cont qty display
+  // Actual container units = actCartons * carton size
+  var actUnitsH = r.actCartons>0
+    ? '<span style="font-weight:700;color:#1e40af">'+Math.round(r.actCartons*r.carton).toLocaleString()+'</span>'
+    : dash();
+  // Air freight qty - editable input with +/- buttons (in units, stepped by carton)
+  var airH = '<div class="cc">'
+    +'<button class="inc-btn" title="-1 carton" onclick="event.stopPropagation();adjAir(\''+esc(r.code)+'\',-1)">&#8722;</button>'
+    +'<input type="text" class="air-input" id="ai-'+id+'" value="'+(r.actAir>0?r.actAir.toLocaleString():'0')+'"'
+    +' onclick="event.stopPropagation()"'
+    +' onchange="event.stopPropagation();setAir(\''+esc(r.code)+'\',this.value)"'
+    +' onkeydown="if(event.key===\'Enter\')this.blur()">'
+    +'<button class="inc-btn" title="+1 carton" onclick="event.stopPropagation();adjAir(\''+esc(r.code)+'\',1)">&#43;</button>'
+    +'</div>';
+  var contH = r.containerOrderQty>0 ? '<span class="cont-qty">'+r.containerOrderQty.toLocaleString()+'</span>' : dash();
+  // Rec cartons (calculated, display only)
+  var recH = fC(r.adjCartons);
+  // Actual cartons (editable)
+  var act = r.actCartons;
+  var ctrlH = '<div class="cc">'
+    +'<button class="inc-btn" title="-1" onclick="event.stopPropagation();adjAct(\''+esc(r.code)+'\',-1)">&#8722;&#8722;</button>'
+    +'<button class="inc-btn" title="-0.25" onclick="event.stopPropagation();adjAct(\''+esc(r.code)+'\',-0.25)">&#8722;</button>'
+    +'<input type="text" class="carton-input" id="cv-'+id+'" value="'+fC(act)+'"'
+    +' onclick="event.stopPropagation()"'
+    +' onchange="event.stopPropagation();setAct(\''+esc(r.code)+'\',this.value)"'
+    +' onkeydown="if(event.key===\'Enter\')this.blur()">'
+    +'<button class="inc-btn" title="+0.25" onclick="event.stopPropagation();adjAct(\''+esc(r.code)+'\',0.25)">&#43;</button>'
+    +'<button class="inc-btn" title="+1" onclick="event.stopPropagation();adjAct(\''+esc(r.code)+'\',1)">&#43;&#43;</button>'
+    +'</div>';
+  var sopH  = r.onSOP>0      ? '<span style="font-weight:700;color:#1e40af">'+r.onSOP.toLocaleString()+'</span>' : dash();
+  var poH   = r.onPO>0       ? '<span style="font-weight:600">'+r.onPO.toLocaleString()+'</span>'               : dash();
+  var contC = r.onContainer>0 ? '<span style="color:#6d28d9;font-weight:600;font-size:11px">'+Math.round(r.onContainer).toLocaleString()+'</span>' : dash();
+  var rowCls=(r.status==='obsolete'?'row-obs':r.status==='request'?'row-req':'')+' clickable'+(!r.included?' row-excl':'');
+  var cbH='<input type="checkbox" class="inc-cb"'+(r.included?' checked':'')+' onclick="event.stopPropagation()" onchange="toggleIncl(\''+esc(r.code)+'\',this.checked)">';
+  return '<tr class="'+rowCls.trim()+'" id="row-'+id+'" data-code="'+esc(r.code)+'">'
+    +'<td style="text-align:center">'+cbH+'</td>'
+    +'<td>'+esc(r.code)+'</td>'
+    +'<td title="'+esc(r.desc)+'" style="max-width:185px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(r.desc)+'</td>'
+    +'<td style="text-align:right">'+r.free.toLocaleString()+'</td>'
+    +'<td style="text-align:right">'+r.weeklyUsage.toFixed(1)+'</td>'
+    +'<td><div class="wks-bar"><div class="wks-track"><div class="wks-fill" style="width:'+pct.toFixed(0)+'%;background:'+bc+'"></div></div><span class="wks-num" style="color:'+bc+'">'+ws+'</span></div></td>'
+    +'<td style="text-align:right">'+sopH+'</td>'
+    +'<td style="text-align:right">'+poH+'</td>'
+    +'<td style="text-align:right">'+contC+'</td>'
+    +'<td><span class="badge '+(statusCls[r.status]||'')+'">'+statusLbl[r.status]+'</span></td>'
+    +'<td>'+airH+'</td>'
+    +'<td style="text-align:right">'+contH+'</td>'
+    +'<td style="text-align:right" id="au-'+id+'">'+actUnitsH+'</td>'
+    +'<td style="text-align:right;color:#374151;font-weight:600">'+recH+'</td>'
+    +'<td>'+ctrlH+'</td>'
+    +'</tr>';
+}
+
+// ── Export ─────────────────────────────────────────────────────────────────
+function showExport(){
+  if(!rows.length){ alert('Load stock data first.'); return; }
+  var er=rows.filter(function(r){return r.included&&r.actCartons>0;});
+  if(!er.length){ alert('No ticked rows with Actual cartons > 0.'); return; }
+  var tc=er.reduce(function(s,r){return s+r.actCartons;},0);
+  var tu=Math.round(er.reduce(function(s,r){return s+r.actCartons*r.carton;},0));
+  document.getElementById('expSum').innerHTML=er.length+' SKUs &nbsp;|&nbsp; '+fC(tc)+' cartons &nbsp;|&nbsp; '+tu.toLocaleString()+' units';
+  var disp=nwkday(now(),12), arr=nwkday(disp,5);
+  document.getElementById('expDisp').value=d2s(disp);
+  document.getElementById('expArr').value=d2s(arr);
+  document.getElementById('expModal').classList.add('open');
+}
+
+function doExport(){
+  var ref=(document.getElementById('expRef').value||'').trim();
+  var disp=document.getElementById('expDisp').value;
+  var arr=document.getElementById('expArr').value;
+  if(!ref){ alert('Enter a container reference.'); return; }
+  if(!disp||!arr){ alert('Enter dispatch and arrival dates.'); return; }
+  var er=rows.filter(function(r){return r.included&&r.actCartons>0;});
+  if(!er.length){ alert('No items to export.'); return; }
+  var lines=[ref,'Completed Loading By:,'+disp+',Deliver Into Tibard By:,'+arr,'',
+    'Tibard Stock Code,Description,Carton Qty,Cartons,Total Quantity'];
+  var tc=0,tu=0;
+  er.forEach(function(r){
+    var units=Math.round(r.actCartons*r.carton);
+    tc+=r.actCartons; tu+=units;
+    lines.push([r.code,'"'+r.desc.replace(/"/g,'')+'"',r.carton,fC(r.actCartons),units].join(','));
+  });
+  lines.push(['"TOTALS"','','',fC(tc),tu].join(','));
+  var blob=new Blob([lines.join('\n')],{type:'text/csv;charset=utf-8;'});
+  var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download=ref.replace(/\s+/g,'_')+'_'+new Date().toISOString().slice(0,10)+'.csv'; a.click();
+  closeExp();
+}
+
+// ── Air freight export ─────────────────────────────────────────────────────
+function closeAir(){ document.getElementById('airModal').classList.remove('open'); }
+function showAirExport(){
+  if(!rows.length){ alert('Load stock data first.'); return; }
+  var er=rows.filter(function(r){return r.included&&r.actAir>0;});
+  if(!er.length){ alert('No ticked rows with Air freight qty > 0.'); return; }
+  var tu=Math.round(er.reduce(function(s,r){return s+r.actAir;},0));
+  document.getElementById('airSum').innerHTML=er.length+' SKUs &nbsp;|&nbsp; '+tu.toLocaleString()+' units by air';
+  document.getElementById('airRef').value='';
+  var byDate=nwkday(now(),2);
+  document.getElementById('airDate').value=d2s(byDate);
+  document.getElementById('airModal').classList.add('open');
+}
+function doAirExport(){
+  var ref=(document.getElementById('airRef').value||'').trim();
+  var byDate=document.getElementById('airDate').value;
+  if(!ref){ alert('Enter an air order reference.'); return; }
+  if(!byDate){ alert('Enter a required-by date.'); return; }
+  var er=rows.filter(function(r){return r.included&&r.actAir>0;});
+  if(!er.length){ alert('No items to export.'); return; }
+  var lines=[ref+' (AIR FREIGHT)','Required By:,'+byDate,'',
+    'Tibard Stock Code,Description,Carton Qty,Cartons,Total Quantity'];
+  var tc=0,tu=0;
+  er.forEach(function(r){
+    var cartons=Math.round((r.actAir/r.carton)*100)/100;
+    tc+=cartons; tu+=r.actAir;
+    lines.push([r.code,'"'+r.desc.replace(/"/g,'')+'"',r.carton,fC(cartons),r.actAir].join(','));
+  });
+  lines.push(['"TOTALS"','','',fC(Math.round(tc*100)/100),tu].join(','));
+  var blob=new Blob([lines.join('\n')],{type:'text/csv;charset=utf-8;'});
+  var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download=ref.replace(/\s+/g,'_')+'_AIR_'+new Date().toISOString().slice(0,10)+'.csv'; a.click();
+  closeAir();
+}
+
+// ── Storage (browser localStorage — works on any web server) ────────────────
+var saveTimer=null;
+function dbSave(){ clearTimeout(saveTimer); saveTimer=setTimeout(saveState,1200); }
+function saveState(){
+  try{
+    var state={rows:rows,cPOs:cPOs,nextContDate:nextContDate,savedAt:new Date().toISOString()};
+    localStorage.setItem('tibard_v5',JSON.stringify(state));
+    var ind=document.getElementById('saveInd');
+    if(ind){ind.innerHTML='&#10003; Saved';setTimeout(function(){ind.textContent='';},2000);}
+  }catch(e){console.log('Save failed:',e);}
+}
+function loadState(){
+  try{
+    var raw=localStorage.getItem('tibard_v5');
+    if(!raw) return false;
+    var s=JSON.parse(raw);
+    if(!s.rows||!s.rows.length) return false;
+    rows=s.rows; cPOs=s.cPOs||[]; nextContDate=s.nextContDate||null;
+    var sa=s.savedAt?new Date(s.savedAt).toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}):'';
+    document.getElementById('lastUpdated').textContent='Last saved: '+sa;
+    recalcContainers(); recalcQtys(); showData();
+    return true;
+  }catch(e){console.log('Load failed:',e);return false;}
+}
+function clearAll(){
+  if(!confirm('Clear all saved data?')) return;
+  try{
+    localStorage.removeItem('tibard_v5');
+    rows=[];cPOs=[];nextContDate=null;
+    document.getElementById('dataWrap').classList.add('hidden');
+    document.getElementById('uzone').classList.remove('hidden');
+    document.getElementById('sbar').style.display='none';
+    document.getElementById('lastUpdated').textContent='';
+  }catch(e){alert('Clear failed: '+e);}
+}
+
+// ── Event listeners ────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded',function(){
+  loadState();
+  document.getElementById('tBody').addEventListener('click',function(e){
+    if(e.target.tagName==='INPUT'||e.target.tagName==='BUTTON') return;
+    var tr=e.target.closest('tr');
+    if(!tr) return;
+    var code=tr.getAttribute('data-code');
+    if(code) openRWModal(code);
+  });
+  document.getElementById('rwClose').addEventListener('click',function(){document.getElementById('rwModal').classList.remove('open');});
+  document.getElementById('rwModal').addEventListener('click',function(e){if(e.target===this)this.classList.remove('open');});
+  document.getElementById('expModal').addEventListener('click',function(e){if(e.target===this)this.classList.remove('open');});
+  document.getElementById('airModal').addEventListener('click',function(e){if(e.target===this)this.classList.remove('open');});
+});
+</script>
+</body>
+</html>
