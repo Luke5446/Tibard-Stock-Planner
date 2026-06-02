@@ -150,10 +150,53 @@ textarea{width:100%;min-height:75px;font-size:11px;font-family:monospace;padding
 .uzone small{font-size:10px;color:#6b7280;line-height:1.5;display:block}
 .foot{font-size:10px;color:#6b7280;margin-top:5px;line-height:1.5}
 .hidden{display:none}
+/* Viewer mode: hide all editing controls */
+body.viewer-mode .edit-only{display:none !important}
+body.viewer-mode #pasteBtn{display:none}
+body.viewer-mode .cc{display:none}
+body.viewer-mode .inc-cb{display:none}
+body.viewer-mode .air-input,body.viewer-mode .carton-input{pointer-events:none;background:#f8fafc;border-color:#eee}
+body.viewer-mode #uzone .udesc-edit{display:none}
+/* Viewer info banner */
+.viewer-banner{display:none;background:#dbeafe;border-bottom:1px solid #93c5fd;padding:8px 20px;font-size:12px;color:#1e40af;text-align:center}
+body.viewer-mode .viewer-banner{display:block}
+body.viewer-mode .view-only{display:block !important}
 /* export grid */
 .egrid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:10px}
 .egrid label{display:block;font-size:11px;color:#4b5563;font-weight:600;margin-bottom:3px}
 .egrid input{width:100%;padding:6px 9px;border:1px solid #c8d0df;border-radius:5px;font-size:12px;font-family:Arial,sans-serif}
+
+/* ── Mobile responsive ── */
+@media (max-width: 768px){
+  header{padding:10px 12px}
+  header h1{font-size:14px}
+  .toolbar{padding:7px 12px}
+  .sbar{padding:7px 12px;gap:8px}
+  .main{padding:10px 12px}
+  .stats{grid-template-columns:repeat(2,1fr)}
+  .stat-val{font-size:18px}
+  .ph{padding:9px 12px}
+  .ph h2{font-size:12px}
+  .ph .sub{display:none}
+  /* On phones, let the big table scroll horizontally as a block */
+  table.main{min-width:1050px}
+  .filters input{min-width:140px;flex:1}
+  .filters{gap:5px}
+  .rwi-code{min-width:90px;font-size:11px}
+  .rwi-desc{display:none}
+  .modal-box{max-height:94vh}
+  .mmeta{font-size:11px;gap:8px}
+  /* Stack the export/header buttons */
+  header > div:last-child{flex-wrap:wrap;justify-content:flex-end;gap:4px}
+  header .btn{font-size:11px;padding:5px 8px}
+  .ctypes{grid-template-columns:1fr}
+  .po-cards{grid-template-columns:1fr}
+}
+@media (max-width: 420px){
+  .stats{grid-template-columns:1fr 1fr}
+  header h1{font-size:13px}
+}
+
 </style>
 </head>
 <body>
@@ -164,15 +207,19 @@ textarea{width:100%;min-height:75px;font-size:11px;font-family:monospace;padding
     <span id="lastUpdated" style="font-size:11px;opacity:.7"></span>
   </div>
   <div style="display:flex;gap:6px;align-items:center">
+    <span id="modeBadge" style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;color:#fff;background:#1e40af"></span>
     <span id="saveInd" style="font-size:10px;opacity:.6"></span>
-    <button class="btn" style="color:#fff;border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.12);font-size:12px" onclick="showExport()">&#8659; Export container</button>
-    <button class="btn" style="color:#fff;border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.12);font-size:12px" onclick="showAirExport()">&#9992; Export air freight</button>
-    <button class="btn" style="color:#fff;border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.12);font-size:12px" onclick="clearAll()">&#128465; Clear</button>
+    <button class="btn edit-only" style="color:#fff;border-color:rgba(255,255,255,.3);background:#16a34a;font-size:12px" onclick="publishData()">&#128228; Publish for team</button>
+    <button class="btn edit-only" style="color:#fff;border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.12);font-size:12px" onclick="showExport()">&#8659; Export container</button>
+    <button class="btn edit-only" style="color:#fff;border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.12);font-size:12px" onclick="showAirExport()">&#9992; Export air freight</button>
+    <button class="btn edit-only" style="color:#fff;border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.12);font-size:12px" onclick="clearAll()">&#128465; Clear</button>
   </div>
 </header>
 
+<div class="viewer-banner">&#128065; You're viewing live stock data published by the planning team. This is read-only &mdash; tap any row to see its weekly stock runway.</div>
+
 <div class="toolbar">
-  <button class="btn btn-p" id="pasteBtn" onclick="togglePaste()">&#9998; Paste stock data from Sage</button>
+  <button class="btn btn-p edit-only" id="pasteBtn" onclick="togglePaste()">&#9998; Paste stock data from Sage</button>
   <div style="margin-left:auto;font-size:11px;color:#4b5563">Target: <strong>12 wks</strong> &nbsp;|&nbsp; Air lead: <strong>2 wks</strong> &nbsp;|&nbsp; Container lead: <strong>12 wks</strong></div>
 </div>
 
@@ -198,9 +245,11 @@ textarea{width:100%;min-height:75px;font-size:11px;font-family:monospace;padding
   </div>
 
   <div id="uzone" class="uzone">
-    <h2>&#128196; Ready to load stock data</h2>
-    <p>Click <strong>Paste stock data from Sage</strong> above</p>
-    <small>Select A9:R234 &rarr; Ctrl+C &rarr; Paste &nbsp;|&nbsp; Col Q=Flag(OBS/REQ) &nbsp;Col R=On SOP</small>
+    <h2 class="edit-only">&#128196; Ready to load stock data</h2>
+    <p class="edit-only">Click <strong>Paste stock data from Sage</strong> above</p>
+    <small class="edit-only">Select A9:M[last row] &rarr; Ctrl+C &rarr; Paste &nbsp;|&nbsp; Col L=Flag(OBS/REQ) &nbsp;Col M=On SOP</small>
+    <h2 class="view-only" style="display:none">&#9203; Waiting for data</h2>
+    <p class="view-only" style="display:none">No stock data has been published by the planning team yet. Please check back shortly.</p>
   </div>
 
   <div id="dataWrap" class="hidden">
@@ -1042,6 +1091,32 @@ function doAirExport(){
   closeAir();
 }
 
+// ── Mode handling: editor vs viewer ────────────────────────────────────────
+function applyMode(){
+  if(IS_EDITOR){
+    // Editor sees everything; show a small badge
+    document.getElementById('modeBadge').textContent = 'EDITOR';
+    document.getElementById('modeBadge').style.background = '#065f46';
+  } else {
+    // Viewer: read-only. Hide all editing controls.
+    document.body.classList.add('viewer-mode');
+    document.getElementById('modeBadge').textContent = 'VIEW ONLY';
+    document.getElementById('modeBadge').style.background = '#1e40af';
+  }
+}
+
+// ── Publish data for the team (editor only) ─────────────────────────────────
+function publishData(){
+  if(!rows.length){ alert('Load stock data first.'); return; }
+  var state = {rows:rows, cPOs:cPOs, nextContDate:nextContDate, savedAt:new Date().toISOString()};
+  var blob = new Blob([JSON.stringify(state)], {type:'application/json'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'data.json';
+  a.click();
+  alert('data.json downloaded.\n\nNow upload it to your GitHub repo (replacing the old data.json) and commit. The team will see the update within a minute.');
+}
+
 // ── Storage (browser localStorage — works on any web server) ────────────────
 var saveTimer=null;
 function dbSave(){ clearTimeout(saveTimer); saveTimer=setTimeout(saveState,1200); }
@@ -1078,9 +1153,41 @@ function clearAll(){
   }catch(e){alert('Clear failed: '+e);}
 }
 
+// ── Role / mode ──────────────────────────────────────────────────────────
+var IS_EDITOR = /[?&]edit\b/.test(window.location.search);
+
+// ── Fetch shared team data.json (published data) ───────────────────────────
+function fetchSharedData(cb){
+  // Add cache-buster so team always gets the latest published file
+  var url = 'data.json?t=' + Date.now();
+  fetch(url).then(function(r){
+    if(!r.ok) throw new Error('no data.json');
+    return r.json();
+  }).then(function(s){
+    if(s && s.rows && s.rows.length){
+      rows = s.rows; cPOs = s.cPOs || []; nextContDate = s.nextContDate || null;
+      var sa = s.savedAt ? new Date(s.savedAt).toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+      document.getElementById('lastUpdated').textContent = 'Team data published: ' + sa;
+      recalcContainers(); recalcQtys(); showData();
+    }
+    if(cb) cb(true);
+  }).catch(function(){
+    if(cb) cb(false);
+  });
+}
+
 // ── Event listeners ────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded',function(){
-  loadState();
+  applyMode();
+  // Editor: load their own working copy from localStorage first; fall back to shared
+  // Viewer: always load the shared published data.json
+  if(IS_EDITOR){
+    if(!loadState()) fetchSharedData();
+  } else {
+    fetchSharedData(function(ok){
+      // If no data.json exists yet, viewer just sees the empty prompt
+    });
+  }
   document.getElementById('tBody').addEventListener('click',function(e){
     if(e.target.tagName==='INPUT'||e.target.tagName==='BUTTON') return;
     var tr=e.target.closest('tr');
