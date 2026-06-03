@@ -29,6 +29,9 @@ header h1{font-size:16px;font-weight:600}
 /* stats */
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:12px}
 .stat{background:#fff;border-radius:7px;padding:9px 12px;border:1px solid #dde3ed}
+.stat.tile{cursor:pointer;transition:all .12s}
+.stat.tile:hover{border-color:#2E75B6;background:#f0f7ff;transform:translateY(-1px)}
+.stat.tile-active{border-color:#1F3864;border-width:2px;background:#e8f0fb;box-shadow:0 1px 4px rgba(31,56,100,.15)}
 .stat-lbl{font-size:10px;color:#4b5563;margin-bottom:2px;line-height:1.3}
 .stat-val{font-size:20px;font-weight:700}
 /* panels */
@@ -229,14 +232,16 @@ body.viewer-mode .view-only{display:block !important}
 
 <div class="toolbar">
   <button class="btn btn-p edit-only" id="pasteBtn" onclick="togglePaste()">&#9998; Paste stock data from Sage</button>
-  <div style="margin-left:auto;font-size:11px;color:#4b5563">Target: <strong>12 wks</strong> &nbsp;|&nbsp; Air lead: <strong>2 wks</strong> &nbsp;|&nbsp; Container lead: <strong>12 wks</strong></div>
+  <span id="skuCount" style="font-size:13px;font-weight:700;color:#1F3864;padding:0 4px"></span>
+  <div style="margin-left:auto;font-size:11px;color:#4b5563">Target cover: <strong>12 wks</strong> &nbsp;|&nbsp; Air lead: <strong>2 wks</strong> &nbsp;|&nbsp; Container lead: <strong>13 wks</strong></div>
 </div>
 
 <div class="sbar" id="sbar">
-  <label>&#128679; Next container arrival:</label>
+  <label>&#128679; If ordered today, container ETA:</label>
   <input type="date" id="nextDate" onchange="onDateChange()">
   <span class="hint" id="dateHint"></span>
-  <button class="btn" style="font-size:11px;padding:3px 9px" onclick="resetDate()">&#8635; Reset 12 wks</button>
+  <span class="hint" style="opacity:.8">&#8212; based on a 13-week lead time from placing the order. Adjust if you have a confirmed date.</span>
+  <button class="btn" style="font-size:11px;padding:3px 9px" onclick="resetDate()">&#8635; Reset to 13 wks</button>
 </div>
 
 <div class="main">
@@ -450,7 +455,7 @@ body.viewer-mode .view-only{display:block !important}
 <script>
 // ── State ──────────────────────────────────────────────────────────────────
 var rows = [], cPOs = [], sortCol = 'weeksOfCover', sortAsc = true;
-var TARGET = 12, RWWKS = 20;
+var TARGET = 12, CONT_LEAD = 13, RWWKS = 20;
 var selCtName = null, selCtCap = 0, nextContDate = null;
 var IS_EDITOR = /[?&]edit\b/.test(window.location.search);
 
@@ -473,7 +478,7 @@ function nwkday(d, wks){
 function d2s(d){ var y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),dd=String(d.getDate()).padStart(2,'0'); return y+'-'+m+'-'+dd; }
 
 // ── Next container date ────────────────────────────────────────────────────
-function getNextDate(){ return nextContDate ? new Date(nextContDate) : nwkday(now(),TARGET); }
+function getNextDate(){ return nextContDate ? new Date(nextContDate) : nwkday(now(),CONT_LEAD); }
 function resetDate(){ nextContDate=null; document.getElementById('nextDate').value=d2s(getNextDate()); updateHint(); recalcQtys(); renderTable(); saveState(); }
 function onDateChange(){ nextContDate=document.getElementById('nextDate').value||null; updateHint(); recalcQtys(); renderTable(); saveState(); }
 function updateHint(){ var d=getNextDate(); var w=wksUntil(d2s(d)); document.getElementById('dateHint').textContent=fmtD(d2s(d))+' ('+w.toFixed(1)+' wks away)'; }
@@ -818,17 +823,50 @@ function toggleRWI(id){
 
 // ── Stats ──────────────────────────────────────────────────────────────────
 function updateStats(){
-  var act=rows.filter(function(r){return r.status!=='obsolete'&&r.status!=='request';});
-  document.getElementById('statsBar').innerHTML=[
-    st('Total SKUs',rows.length,'#111827'),
-    st('Critical (&#8804;4 wks)',act.filter(function(r){return r.status==='critical';}).length,'#b91c1c'),
-    st('Low (4&#8211;8 wks)',act.filter(function(r){return r.status==='low';}).length,'#92400e'),
-    st('Needs air freight',rows.filter(function(r){return r.airFreightQty>0;}).length,'#c2410c'),
-    st('Needs container',rows.filter(function(r){return r.containerOrderQty>0;}).length,'#1e40af'),
-    st('On SOP',rows.filter(function(r){return r.onSOP>0;}).length,'#374151'),
-    st('On PO/container',rows.filter(function(r){return r.onPO>0||r.onContainer>0;}).length,'#6d28d9'),
-    st('Obsolete',rows.filter(function(r){return r.status==='obsolete';}).length,'#6b7280'),
-  ].join('');
+  // Total SKUs shown next to paste button
+  var sc=document.getElementById('skuCount');
+  if(sc) sc.textContent=rows.length?rows.length.toLocaleString()+' SKUs':'';
+  // Clickable filter tiles. Each defines how it filters the table.
+  var tiles=[
+    {key:'critical',  label:'Critical (&#8804;4 wks)', color:'#b91c1c', n:rows.filter(function(r){return r.status==='critical';}).length},
+    {key:'low',       label:'Low (4&#8211;8 wks)',     color:'#92400e', n:rows.filter(function(r){return r.status==='low';}).length},
+    {key:'overstock', label:'Overstock (25+ wks)',     color:'#166534', n:rows.filter(function(r){return r.status==='overstock';}).length},
+    {key:'air',       label:'Needs air freight',       color:'#c2410c', n:rows.filter(function(r){return r.airFreightQty>0;}).length},
+    {key:'cont',      label:'Needs container',         color:'#1e40af', n:rows.filter(function(r){return r.containerOrderQty>0;}).length},
+    {key:'onpo',      label:'On PO',                   color:'#6d28d9', n:rows.filter(function(r){return r.onPO>0;}).length},
+    {key:'request',   label:'On Request',              color:'#5b21b6', n:rows.filter(function(r){return r.status==='request';}).length},
+    {key:'obsolete',  label:'Obsolete',                color:'#6b7280', n:rows.filter(function(r){return r.status==='obsolete';}).length},
+  ];
+  document.getElementById('statsBar').innerHTML=tiles.map(function(t){
+    var active=(activeTile===t.key)?' tile-active':'';
+    return '<div class="stat tile'+active+'" onclick="tileFilter(\''+t.key+'\')">'
+      +'<div class="stat-lbl">'+t.label+'</div>'
+      +'<div class="stat-val" style="color:'+t.color+'">'+t.n+'</div></div>';
+  }).join('');
+}
+
+// Clicking a tile sets the status/order filter accordingly and highlights it
+var activeTile=null;
+function tileFilter(key){
+  // Toggle off if clicking the already-active tile
+  if(activeTile===key){ clearFilt(); return; }
+  activeTile=key;
+  // Reset both dropdowns, then set the right one for this tile
+  document.getElementById('sfilt').value='';
+  document.getElementById('ofilt').value='';
+  document.getElementById('srch').value='';
+  // status-type tiles map to the status filter; order-type tiles to the order filter
+  if(['critical','low','overstock','obsolete','request'].indexOf(key)>=0){
+    document.getElementById('sfilt').value=key;
+  } else if(key==='air'){
+    document.getElementById('ofilt').value='air';
+  } else if(key==='cont'){
+    document.getElementById('ofilt').value='cont';
+  } else if(key==='onpo'){
+    document.getElementById('ofilt').value='onpo';
+  }
+  renderTable();
+  updateStats(); // refresh highlight
 }
 function st(l,v,c){ return '<div class="stat"><div class="stat-lbl">'+l+'</div><div class="stat-val" style="color:'+c+'">'+v+'</div></div>'; }
 
@@ -940,7 +978,7 @@ function updateActUnits(code,r){
 
 // ── Sort / filter / render ─────────────────────────────────────────────────
 function sBy(col){ if(sortCol===col)sortAsc=!sortAsc; else{sortCol=col;sortAsc=(col==='weeksOfCover');} renderTable(); }
-function clearFilt(){ document.getElementById('srch').value=''; document.getElementById('sfilt').value=''; document.getElementById('ofilt').value=''; renderTable(); }
+function clearFilt(){ activeTile=null; document.getElementById('srch').value=''; document.getElementById('sfilt').value=''; document.getElementById('ofilt').value=''; renderTable(); updateStats(); }
 
 function renderTable(){
   var srch=(document.getElementById('srch').value||'').toLowerCase();
@@ -1037,7 +1075,7 @@ function showExport(){
   var tc=er.reduce(function(s,r){return s+r.actCartons;},0);
   var tu=Math.round(er.reduce(function(s,r){return s+r.actCartons*r.carton;},0));
   document.getElementById('expSum').innerHTML=er.length+' SKUs &nbsp;|&nbsp; '+fC(tc)+' cartons &nbsp;|&nbsp; '+tu.toLocaleString()+' units';
-  var disp=nwkday(now(),12), arr=nwkday(disp,5);
+  var disp=nwkday(now(),CONT_LEAD), arr=nwkday(disp,5);
   document.getElementById('expDisp').value=d2s(disp);
   document.getElementById('expArr').value=d2s(arr);
   document.getElementById('expModal').classList.add('open');
