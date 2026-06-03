@@ -3,6 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Tibard Stock">
+<meta name="theme-color" content="#1F3864">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <title>Tibard – Clockwork Stock Tracker</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -155,6 +162,8 @@ body.viewer-mode .edit-only{display:none !important}
 body.viewer-mode #pasteBtn{display:none}
 body.viewer-mode .cc{display:none}
 body.viewer-mode .inc-cb{display:none}
+body.viewer-mode .poc-del{display:none}
+body.viewer-mode .poForm,body.viewer-mode #poForm{display:none !important}
 body.viewer-mode .air-input,body.viewer-mode .carton-input{pointer-events:none;background:#f8fafc;border-color:#eee}
 body.viewer-mode #uzone .udesc-edit{display:none}
 /* Viewer info banner */
@@ -216,7 +225,7 @@ body.viewer-mode .view-only{display:block !important}
   </div>
 </header>
 
-<div class="viewer-banner">&#128065; You're viewing live stock data published by the planning team. This is read-only &mdash; tap any row to see its weekly stock runway.</div>
+<div class="viewer-banner">&#128065; This is a read-only view of the latest stock plan published by the buying team. Tap any row to see its weekly stock runway. <span id="bannerDate" style="font-weight:700"></span></div>
 
 <div class="toolbar">
   <button class="btn btn-p edit-only" id="pasteBtn" onclick="togglePaste()">&#9998; Paste stock data from Sage</button>
@@ -285,7 +294,7 @@ body.viewer-mode .view-only{display:block !important}
       <div class="ph" onclick="togglePB('poPB')"><h2>&#128667; Container PO Tracker</h2><span class="sub" id="poSub">Click to expand</span></div>
       <div class="pb" id="poPB">
         <div id="poCards" class="po-cards"></div>
-        <button class="btn btn-p" style="font-size:12px" onclick="showPOForm()">&#43; Add container PO</button>
+        <button class="btn btn-p edit-only" style="font-size:12px" onclick="showPOForm()">&#43; Add container PO</button>
         <div id="poForm" class="pbox hidden" style="margin-top:10px">
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px">
             <div><label style="display:block;font-size:11px;color:#4b5563;font-weight:600;margin-bottom:3px">Container reference</label>
@@ -353,8 +362,8 @@ body.viewer-mode .view-only{display:block !important}
         <option value="oncont">On a container PO</option>
       </select>
       <button class="btn" onclick="clearFilt()" style="font-size:11px;padding:4px 9px">&#10005; Clear</button>
-      <button class="btn" onclick="tickAll(false)" style="font-size:11px;padding:4px 9px">&#9744; Untick all</button>
-      <button class="btn" onclick="tickAll(true)" style="font-size:11px;padding:4px 9px">&#9745; Tick all</button>
+      <button class="btn edit-only" onclick="tickAll(false)" style="font-size:11px;padding:4px 9px">&#9744; Untick all</button>
+      <button class="btn edit-only" onclick="tickAll(true)" style="font-size:11px;padding:4px 9px">&#9745; Tick all</button>
       <span class="rc" id="rc"></span>
     </div>
 
@@ -443,6 +452,7 @@ body.viewer-mode .view-only{display:block !important}
 var rows = [], cPOs = [], sortCol = 'weeksOfCover', sortAsc = true;
 var TARGET = 12, RWWKS = 20;
 var selCtName = null, selCtCap = 0, nextContDate = null;
+var IS_EDITOR = /[?&]edit\b/.test(window.location.search);
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 function pn(s){ return parseFloat((s||'').toString().replace(/[",\s]/g,''))||0; }
@@ -595,7 +605,7 @@ function recalcContainers(){
   });
 }
 
-function savePO(){
+function savePO(){ if(!IS_EDITOR) return;
   var ref = (document.getElementById('poRef').value||'').trim();
   var date = document.getElementById('poDate').value;
   var txt = document.getElementById('poTA').value.trim();
@@ -851,7 +861,7 @@ function updateCapSum(){
 }
 
 // ── Row controls ───────────────────────────────────────────────────────────
-function toggleIncl(code,checked){
+function toggleIncl(code,checked){ if(!IS_EDITOR) return;
   var r=rows.find(function(x){return x.code===code;});
   if(!r) return;
   r.included=checked;
@@ -859,7 +869,7 @@ function toggleIncl(code,checked){
   if(el){ checked?el.classList.remove('row-excl'):el.classList.add('row-excl'); }
   updateCapSum(); updateStats(); dbSave();
 }
-function tickAll(state){
+function tickAll(state){ if(!IS_EDITOR) return;
   // Apply to currently filtered/visible rows only
   var srch=(document.getElementById('srch').value||'').toLowerCase();
   var sf=document.getElementById('sfilt').value;
@@ -878,7 +888,7 @@ function tickAll(state){
   });
   renderTable(); updateCapSum(); updateStats(); dbSave();
 }
-function adjAir(code,deltaCartons){
+function adjAir(code,deltaCartons){ if(!IS_EDITOR) return;
   var r=rows.find(function(x){return x.code===code;});
   if(!r) return;
   var step=r.carton*deltaCartons;
@@ -888,7 +898,7 @@ function adjAir(code,deltaCartons){
   if(el) el.value=r.actAir.toLocaleString();
   updateStats(); dbSave();
 }
-function setAir(code,val){
+function setAir(code,val){ if(!IS_EDITOR) return;
   var r=rows.find(function(x){return x.code===code;});
   if(!r) return;
   var n=parseFloat(val.replace(/[^0-9.]/g,''));
@@ -899,7 +909,7 @@ function setAir(code,val){
   if(el) el.value=r.actAir.toLocaleString();
   updateStats(); dbSave();
 }
-function adjAct(code,delta){
+function adjAct(code,delta){ if(!IS_EDITOR) return;
   var r=rows.find(function(x){return x.code===code;});
   if(!r) return;
   r.actCartons=Math.max(0,Math.round((r.actCartons+delta)*4)/4);
@@ -909,7 +919,7 @@ function adjAct(code,delta){
   updateActUnits(code,r);
   updateCapSum(); updateStats(); dbSave();
 }
-function setAct(code,val){
+function setAct(code,val){ if(!IS_EDITOR) return;
   var r=rows.find(function(x){return x.code===code;});
   if(!r) return;
   var n=parseFloat(val.replace(/[^0-9.]/g,''));
@@ -1106,7 +1116,7 @@ function applyMode(){
 }
 
 // ── Publish data for the team (editor only) ─────────────────────────────────
-function publishData(){
+function publishData(){ if(!IS_EDITOR){ alert("View-only mode."); return; }
   if(!rows.length){ alert('Load stock data first.'); return; }
   var state = {rows:rows, cPOs:cPOs, nextContDate:nextContDate, savedAt:new Date().toISOString()};
   var blob = new Blob([JSON.stringify(state)], {type:'application/json'});
@@ -1153,8 +1163,6 @@ function clearAll(){
   }catch(e){alert('Clear failed: '+e);}
 }
 
-// ── Role / mode ──────────────────────────────────────────────────────────
-var IS_EDITOR = /[?&]edit\b/.test(window.location.search);
 
 // ── Fetch shared team data.json (published data) ───────────────────────────
 function fetchSharedData(cb){
@@ -1167,7 +1175,9 @@ function fetchSharedData(cb){
     if(s && s.rows && s.rows.length){
       rows = s.rows; cPOs = s.cPOs || []; nextContDate = s.nextContDate || null;
       var sa = s.savedAt ? new Date(s.savedAt).toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
-      document.getElementById('lastUpdated').textContent = 'Team data published: ' + sa;
+      document.getElementById('lastUpdated').textContent = 'Published: ' + sa;
+      var bd = document.getElementById('bannerDate');
+      if(bd && sa) bd.textContent = '(published ' + sa + ')';
       recalcContainers(); recalcQtys(); showData();
     }
     if(cb) cb(true);
