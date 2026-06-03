@@ -334,7 +334,7 @@ body.viewer-mode .view-only{display:block !important}
     <!-- Weekly Runway -->
     <div class="panel">
       <div class="ph" onclick="togglePB('rwPB')"><h2>&#128200; Weekly Stock Runway</h2><span class="sub">Click any table row for popup &nbsp;|&nbsp; Expand for all active items</span></div>
-      <div class="pb open" id="rwPB">
+      <div class="pb" id="rwPB">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:9px;flex-wrap:wrap">
           <input type="text" id="rwSearch" placeholder="&#128269; Filter..." oninput="renderRW()" style="font-size:12px;padding:5px 9px;border-radius:5px;border:1px solid #c8d0df;background:#fff;min-width:170px;font-family:Arial,sans-serif">
           <label style="font-size:11px;color:#4b5563;display:flex;align-items:center;gap:3px"><input type="checkbox" id="rwProb" onchange="renderRW()"> Issues only</label>
@@ -366,7 +366,8 @@ body.viewer-mode .view-only{display:block !important}
         <option value="onpo">Has On PO</option>
         <option value="oncont">On a container PO</option>
       </select>
-      <button class="btn" onclick="clearFilt()" style="font-size:11px;padding:4px 9px">&#10005; Clear</button>
+      <button class="btn" onclick="clearFilt()" style="font-size:11px;padding:4px 9px">&#10005; Clear filters</button>
+      <button class="btn edit-only" onclick="resetView()" style="font-size:11px;padding:4px 9px">&#8635; Reset view</button>
       <button class="btn edit-only" onclick="tickAll(false)" style="font-size:11px;padding:4px 9px">&#9744; Untick all</button>
       <button class="btn edit-only" onclick="tickAll(true)" style="font-size:11px;padding:4px 9px">&#9745; Tick all</button>
       <span class="rc" id="rc"></span>
@@ -395,8 +396,8 @@ body.viewer-mode .view-only{display:block !important}
       </table>
     </div></div>
     <p class="foot">
-      &#9992; <strong style="color:#c2410c">Air qty</strong> = units to prevent stock running out over 12 wks (2 wk lead).
-      &#128682; <strong style="color:#1e40af">Cont qty</strong> = units so next container gives 12 wks cover on arrival.
+      &#9992; <strong style="color:#c2410c">Air qty</strong> = units to prevent stock running out, with 3 weeks cover (3 wk air lead time).
+      &#128682; <strong style="color:#1e40af">Cont qty</strong> = units so the next container (13 wk lead) gives 12 wks cover on arrival.
       <strong>Rec crt</strong> = recommended cartons (calculated). <strong>Actual cartons</strong> = your adjusted figure used in export.
       Click any row for runway popup.
     </p>
@@ -455,7 +456,7 @@ body.viewer-mode .view-only{display:block !important}
 <script>
 // ── State ──────────────────────────────────────────────────────────────────
 var rows = [], cPOs = [], sortCol = 'weeksOfCover', sortAsc = true;
-var TARGET = 12, CONT_LEAD = 13, RWWKS = 20;
+var TARGET = 12, CONT_LEAD = 13, AIR_LEAD = 3, RWWKS = 20;
 var selCtName = null, selCtCap = 0, nextContDate = null;
 var IS_EDITOR = /[?&]edit\b/.test(window.location.search);
 
@@ -572,9 +573,9 @@ function calcQtys(r){
     stock -= r.weeklyUsage;
     if(stock < minStock) minStock = stock;
   }
-  // Air qty = enough to lift the minimum stock to 0 (plus 1 week buffer)
+  // Air qty = enough to lift the minimum stock to 0, plus a 3-week cover buffer
   var airQty = minStock < 0
-    ? Math.ceil((-minStock + r.weeklyUsage) / r.carton) * r.carton
+    ? Math.ceil((-minStock + r.weeklyUsage * AIR_LEAD) / r.carton) * r.carton
     : 0;
 
   // ── Container order: units so stock at next container arrival = 12 wks ────
@@ -980,6 +981,23 @@ function updateActUnits(code,r){
 function sBy(col){ if(sortCol===col)sortAsc=!sortAsc; else{sortCol=col;sortAsc=(col==='weeksOfCover');} renderTable(); }
 function clearFilt(){ activeTile=null; document.getElementById('srch').value=''; document.getElementById('sfilt').value=''; document.getElementById('ofilt').value=''; renderTable(); updateStats(); }
 
+function resetView(){
+  if(!IS_EDITOR) return;
+  if(!confirm('Reset the view to standard?\n\nThis re-ticks all active items, unticks OBS & REQ items, and clears all filters. Your air freight and carton quantities are kept.')) return;
+  // Restore default tick state: active items ticked, OBS & REQ unticked
+  rows.forEach(function(r){ r.included = (r.flag===''); });
+  // Clear filters and active tile
+  activeTile=null;
+  document.getElementById('srch').value='';
+  document.getElementById('sfilt').value='';
+  document.getElementById('ofilt').value='';
+  // Reset sort to default (weeks of cover ascending)
+  sortCol='weeksOfCover'; sortAsc=true;
+  // Collapse panels back to standard (runway closed)
+  document.getElementById('rwPB').classList.remove('open');
+  renderTable(); updateStats(); updateCapSum(); dbSave();
+}
+
 function renderTable(){
   var srch=(document.getElementById('srch').value||'').toLowerCase();
   var sf=document.getElementById('sfilt').value;
@@ -1034,14 +1052,12 @@ function rowHTML(r){
   // Actual cartons (editable)
   var act = r.actCartons;
   var ctrlH = '<div class="cc">'
-    +'<button class="inc-btn" title="-1" onclick="event.stopPropagation();adjAct(\''+esc(r.code)+'\',-1)">&#8722;&#8722;</button>'
-    +'<button class="inc-btn" title="-0.25" onclick="event.stopPropagation();adjAct(\''+esc(r.code)+'\',-0.25)">&#8722;</button>'
+    +'<button class="inc-btn" title="-1 carton" onclick="event.stopPropagation();adjAct(\''+esc(r.code)+'\',-1)">&#8722;</button>'
     +'<input type="text" class="carton-input" id="cv-'+id+'" value="'+fC(act)+'"'
     +' onclick="event.stopPropagation()"'
     +' onchange="event.stopPropagation();setAct(\''+esc(r.code)+'\',this.value)"'
     +' onkeydown="if(event.key===\'Enter\')this.blur()">'
-    +'<button class="inc-btn" title="+0.25" onclick="event.stopPropagation();adjAct(\''+esc(r.code)+'\',0.25)">&#43;</button>'
-    +'<button class="inc-btn" title="+1" onclick="event.stopPropagation();adjAct(\''+esc(r.code)+'\',1)">&#43;&#43;</button>'
+    +'<button class="inc-btn" title="+1 carton" onclick="event.stopPropagation();adjAct(\''+esc(r.code)+'\',1)">&#43;</button>'
     +'</div>';
   var sopH  = r.onSOP>0      ? '<span style="font-weight:700;color:#1e40af">'+r.onSOP.toLocaleString()+'</span>' : dash();
   var poH   = r.onPO>0       ? '<span style="font-weight:600">'+r.onPO.toLocaleString()+'</span>'               : dash();
