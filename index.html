@@ -65,6 +65,7 @@ header h1{font-size:16px;font-weight:600}
 .poc-ref{font-size:13px;font-weight:700;color:#1F3864}
 .poc-date{font-size:11px;color:#4b5563;margin:1px 0}
 .poc-wks{display:inline-block;font-size:10px;padding:1px 6px;border-radius:12px;font-weight:600;margin-bottom:4px}
+.poc-selected{border-color:#1F3864;border-width:2px;background:#e8f0fb;box-shadow:0 1px 4px rgba(31,56,100,.15)}
 .poc-del{position:absolute;top:6px;right:7px;background:none;border:none;cursor:pointer;color:#9ca3af;font-size:13px;padding:1px 4px;border-radius:3px}
 .poc-del:hover{background:#fee2e2;color:#b91c1c}
 /* proj table */
@@ -316,9 +317,9 @@ body.viewer-mode .view-only{display:block !important}
         </div>
         <div id="projWrap" class="hidden" style="margin-top:12px">
           <div style="display:flex;align-items:center;gap:9px;margin-bottom:6px;flex-wrap:wrap">
-            <strong style="font-size:12px;color:#1F3864">&#128200; Projected Stock on Arrival</strong>
-            <select id="projF" onchange="renderProj()" style="font-size:11px;padding:4px 7px;border:1px solid #c8d0df;border-radius:5px;font-family:Arial,sans-serif"></select>
+            <strong id="projTitle" style="font-size:12px;color:#1F3864">&#128200; Projected Stock on Arrival</strong>
             <label style="font-size:11px;color:#4b5563;display:flex;align-items:center;gap:3px"><input type="checkbox" id="projShort" onchange="renderProj()"> Issues only</label>
+            <button class="btn" style="font-size:10px;padding:3px 8px" onclick="selectPO(selectedPO)">&#10005; Close</button>
           </div>
           <div style="overflow-x:auto;border:1px solid #dde3ed;border-radius:7px">
             <table class="ptbl"><thead><tr>
@@ -458,6 +459,7 @@ body.viewer-mode .view-only{display:block !important}
 var rows = [], cPOs = [], sortCol = 'weeksOfCover', sortAsc = true;
 var TARGET = 12, CONT_LEAD = 13, AIR_LEAD = 3, RWWKS = 20;
 var selCtName = null, selCtCap = 0, nextContDate = null;
+var selectedPO = null; // which container tile is selected to show its projection
 var IS_EDITOR = /[?&]edit\b/.test(window.location.search);
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -666,28 +668,37 @@ function renderPOCards(){
     var wl=wks<1?'Arriving imminently':wks.toFixed(1)+' wks away';
     var wbg=wks<2?'#fde8e8;color:#b91c1c':wks<6?'#fef3c7;color:#92400e':'#d1fae5;color:#065f46';
     var tot=Math.round(po.items.reduce(function(s,it){return s+it.qty;},0));
-    return '<div class="poc"><button class="poc-del" onclick="delPO('+i+')">&#10005;</button>'
+    var sel=(selectedPO===po.ref)?' poc-selected':'';
+    return '<div class="poc'+sel+'" onclick="selectPO(\''+esc(po.ref).replace(/'/g,"\\'")+'\')" style="cursor:pointer">'
+      +'<button class="poc-del" onclick="event.stopPropagation();delPO('+i+')">&#10005;</button>'
       +'<div class="poc-ref">'+esc(po.ref)+'</div>'
       +'<div class="poc-date">Arrives: '+fmtD(po.date)+'</div>'
       +'<span class="poc-wks" style="background:'+wbg+'">'+wl+'</span>'
       +'<div style="font-size:11px;color:#4b5563"><strong>'+po.items.length+'</strong> SKUs | <strong>'+tot.toLocaleString()+'</strong> units</div>'
+      +'<div style="font-size:10px;color:#1F3864;margin-top:4px;font-weight:600">'+((selectedPO===po.ref)?'&#9650; Hide details':'&#9660; Click to view contents')+'</div>'
       +'</div>';
   }).join('');
 }
 
+function selectPO(ref){
+  selectedPO = (selectedPO===ref) ? null : ref;
+  renderPOCards();
+  renderProj();
+}
+
 function renderProj(){
   var w=document.getElementById('projWrap');
-  var sel=document.getElementById('projF');
   var short=document.getElementById('projShort').checked;
-  var fref=sel?sel.value:'';
-  var opts='<option value="">All containers</option>';
-  cPOs.forEach(function(po){ opts+='<option value="'+esc(po.ref)+'"'+(fref===po.ref?' selected':'')+'>'+esc(po.ref)+'</option>'; });
-  sel.innerHTML=opts;
-  if(!cPOs.length){ w.classList.add('hidden'); return; }
+  // Only show the projection list when a container tile is selected
+  if(!cPOs.length || !selectedPO){ w.classList.add('hidden'); return; }
   w.classList.remove('hidden');
+  // Heading shows which container is selected
+  var ttl=document.getElementById('projTitle');
+  if(ttl) ttl.innerHTML='&#128200; What\'s on '+esc(selectedPO)+' &mdash; projected stock on arrival';
+  var fref=selectedPO;
   var prows=[];
   cPOs.forEach(function(po){
-    if(fref&&po.ref!==fref) return;
+    if(po.ref!==fref) return;
     var wks=wksUntil(po.date);
     po.items.forEach(function(it){
       var r=rows.find(function(x){return x.code===it.code;});
@@ -1157,7 +1168,7 @@ function showExport(){
   var tc=er.reduce(function(s,r){return s+r.actCartons;},0);
   var tu=Math.round(er.reduce(function(s,r){return s+r.actCartons*r.carton;},0));
   document.getElementById('expSum').innerHTML=er.length+' SKUs &nbsp;|&nbsp; '+fC(tc)+' cartons &nbsp;|&nbsp; '+tu.toLocaleString()+' units';
-  var disp=nwkday(now(),CONT_LEAD), arr=nwkday(disp,5);
+  var arr=getNextDate(); var disp=nwkday(now(),8);
   document.getElementById('expDisp').value=d2s(disp);
   document.getElementById('expArr').value=d2s(arr);
   document.getElementById('expModal').classList.add('open');
