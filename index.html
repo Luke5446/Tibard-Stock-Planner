@@ -590,9 +590,10 @@ function calcQtys(r){
     : 0;
 
   // ── Container order: units so stock at next container arrival = 12 wks ────
+  // Independent of air freight. If air freight is sent, add it as a container PO
+  // and these projections update automatically.
   var stockAtArr = r.free - (r.weeklyUsage * wksToCont);
   rPOs.forEach(function(p){ if(p.wks<=wksToCont) stockAtArr+=p.qty; });
-  stockAtArr += airQty;
   var contNeeded = (r.weeklyUsage * TARGET) - stockAtArr;
   var contQty = Math.max(0, Math.ceil(contNeeded / r.carton) * r.carton);
 
