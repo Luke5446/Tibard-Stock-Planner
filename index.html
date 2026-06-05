@@ -388,7 +388,7 @@ body.viewer-mode .view-only{display:block !important}
           <th onclick="sBy('actAir')" style="width:120px;text-align:center;color:#c2410c">&#9992; Air qty &#8597;</th>
           <th onclick="sBy('containerOrderQty')" style="width:70px;text-align:right;color:#1e40af">&#128682; Cont qty &#8597;</th>
           <th onclick="sBy('actCartons')" style="width:72px;text-align:right;color:#1e40af">&#128682; Act units &#8597;</th>
-          <th class="ns" style="width:78px;text-align:right;color:#065f46">Wks cover</th>
+          <th onclick="sBy('wkCover')" style="width:78px;text-align:right;color:#065f46">Wks cover &#8597;</th>
           <th onclick="sBy('adjCartons')" style="width:70px;text-align:right">Rec crt &#8597;</th>
           <th class="ns" style="width:145px;text-align:center">Actual cartons</th>
         </tr></thead>
@@ -1008,7 +1008,7 @@ function wkCoverHTML(r){
 }
 
 // ── Sort / filter / render ─────────────────────────────────────────────────
-function sBy(col){ if(sortCol===col)sortAsc=!sortAsc; else{sortCol=col;sortAsc=(col==='weeksOfCover');} renderTable(); }
+function sBy(col){ if(sortCol===col)sortAsc=!sortAsc; else{sortCol=col;sortAsc=(col==='weeksOfCover');if(col==='wkCover')sortAsc=false;} renderTable(); }
 function clearFilt(){ activeTile=null; document.getElementById('srch').value=''; document.getElementById('sfilt').value=''; document.getElementById('ofilt').value=''; renderTable(); updateStats(); }
 
 function resetView(){
@@ -1057,6 +1057,15 @@ function renderTable(){
   var srch=(document.getElementById('srch').value||'').toLowerCase();
   var sf=document.getElementById('sfilt').value;
   var of=document.getElementById('ofilt').value;
+  // Compute the live "weeks cover on container arrival" value for sorting
+  rows.forEach(function(r){
+    if(r.weeklyUsage>0){
+      var au=r.actCartons*r.carton;
+      r.wkCover=(au>0)?((projStockOnETA(r)+au)/r.weeklyUsage):-1;
+    } else {
+      r.wkCover=-1;
+    }
+  });
   var data=rows.filter(function(r){
     if(srch&&r.code.toLowerCase().indexOf(srch)<0&&r.desc.toLowerCase().indexOf(srch)<0) return false;
     if(sf==='active'&&(r.status==='obsolete'||r.status==='request')) return false;
