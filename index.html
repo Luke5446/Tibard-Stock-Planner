@@ -367,6 +367,7 @@ body.viewer-mode .view-only{display:block !important}
       </select>
       <button class="btn" onclick="clearFilt()" style="font-size:11px;padding:4px 9px">&#10005; Clear filters</button>
       <button class="btn edit-only" onclick="resetView()" style="font-size:11px;padding:4px 9px">&#8635; Reset view</button>
+      <button class="btn edit-only" onclick="resetCartons()" style="font-size:11px;padding:4px 9px">&#8635; Reset cartons to rec</button>
       <button class="btn edit-only" onclick="tickAll(false)" style="font-size:11px;padding:4px 9px">&#9744; Untick all</button>
       <button class="btn edit-only" onclick="tickAll(true)" style="font-size:11px;padding:4px 9px">&#9745; Tick all</button>
       <span class="rc" id="rc"></span>
@@ -1025,6 +1026,31 @@ function resetView(){
   // Collapse panels back to standard (runway closed)
   document.getElementById('rwPB').classList.remove('open');
   renderTable(); updateStats(); updateCapSum(); dbSave();
+}
+
+function resetCartons(){
+  if(!IS_EDITOR) return;
+  // Reset Actual cartons back to the recommended (Rec crt) for currently filtered rows
+  var srch=(document.getElementById('srch').value||'').toLowerCase();
+  var sf=document.getElementById('sfilt').value;
+  var of=document.getElementById('ofilt').value;
+  var count=0;
+  rows.forEach(function(r){
+    if(srch&&r.code.toLowerCase().indexOf(srch)<0&&r.desc.toLowerCase().indexOf(srch)<0) return;
+    if(sf==='active'&&(r.status==='obsolete'||r.status==='request')) return;
+    else if(sf&&sf!=='active'&&r.status!==sf) return;
+    if(of==='air'&&r.airFreightQty<=0) return;
+    if(of==='cont'&&r.containerOrderQty<=0) return;
+    if(of==='oncont'&&r.onContainer<=0) return;
+    if(of==='onsop'&&r.onSOP<=0) return;
+    r.actCartons = r.adjCartons;   // adjCartons holds the recommended carton figure
+    r.airManAdj = false;           // also let air re-default
+    r.actAir = r.airFreightQty;
+    r.manAdj = false;
+    count++;
+  });
+  renderTable(); updateStats(); updateCapSum(); dbSave();
+  alert(count + ' item(s) reset to the recommended carton quantity.');
 }
 
 function renderTable(){
