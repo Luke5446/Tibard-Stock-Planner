@@ -67,6 +67,8 @@ header h1{font-size:16px;font-weight:600}
 .poc-wks{display:inline-block;font-size:10px;padding:1px 6px;border-radius:12px;font-weight:600;margin-bottom:4px}
 .poc-selected{border-color:#1F3864;border-width:2px;background:#e8f0fb;box-shadow:0 1px 4px rgba(31,56,100,.15)}
 .poc-del{position:absolute;top:6px;right:7px;background:none;border:none;cursor:pointer;color:#9ca3af;font-size:13px;padding:1px 4px;border-radius:3px}
+.poc-edit{position:absolute;top:6px;right:28px;background:none;border:none;cursor:pointer;color:#9ca3af;font-size:12px;padding:1px 4px;border-radius:3px}
+.poc-edit:hover{background:#e8f0fb;color:#1F3864}
 .poc-del:hover{background:#fee2e2;color:#b91c1c}
 /* proj table */
 .ptbl{width:100%;border-collapse:collapse;font-size:11px}
@@ -593,8 +595,9 @@ function calcQtys(r){
     : 0;
 
   // ── Container order: units so stock at next container arrival = 12 wks ────
-  // Independent of air freight. If air freight is sent, add it as a container PO
-  // and these projections update automatically.
+  // The 12-weeks-cover-on-arrival target already gives ample headroom for the
+  // monthly ordering cycle: a SKU landing with 12 weeks cover won't run dry
+  // before the next monthly container can arrive. Independent of air freight.
   var stockAtArr = r.free - (r.weeklyUsage * wksToCont);
   rPOs.forEach(function(p){ if(p.wks<=wksToCont) stockAtArr+=p.qty; });
   var contNeeded = (r.weeklyUsage * TARGET) - stockAtArr;
@@ -670,9 +673,10 @@ function renderPOCards(){
     var tot=Math.round(po.items.reduce(function(s,it){return s+it.qty;},0));
     var sel=(selectedPO===po.ref)?' poc-selected':'';
     return '<div class="poc'+sel+'" onclick="selectPO(\''+esc(po.ref).replace(/'/g,"\\'")+'\')" style="cursor:pointer">'
-      +'<button class="poc-del" onclick="event.stopPropagation();delPO('+i+')">&#10005;</button>'
+      +'<button class="poc-del" onclick="event.stopPropagation();delPO('+i+')" title="Remove PO">&#10005;</button>'
+      +'<button class="poc-edit edit-only" onclick="event.stopPropagation();editPODate('+i+')" title="Change arrival date">&#9998;</button>'
       +'<div class="poc-ref">'+esc(po.ref)+'</div>'
-      +'<div class="poc-date">Arrives: '+fmtD(po.date)+'</div>'
+      +'<div class="poc-date" id="poc-date-'+i+'">Arrives: '+fmtD(po.date)+'</div>'
       +'<span class="poc-wks" style="background:'+wbg+'">'+wl+'</span>'
       +'<div style="font-size:11px;color:#4b5563"><strong>'+po.items.length+'</strong> SKUs | <strong>'+tot.toLocaleString()+'</strong> units</div>'
       +'<div style="font-size:10px;color:#1F3864;margin-top:4px;font-weight:600">'+((selectedPO===po.ref)?'&#9650; Hide details':'&#9660; Click to view contents')+'</div>'
@@ -684,6 +688,34 @@ function selectPO(ref){
   selectedPO = (selectedPO===ref) ? null : ref;
   renderPOCards();
   renderProj();
+}
+
+function editPODate(i){
+  if(!IS_EDITOR) return;
+  var po = cPOs[i];
+  if(!po) return;
+  var el = document.getElementById('poc-date-'+i);
+  if(!el) return;
+  // Replace the date line with an inline date picker + save/cancel
+  el.innerHTML = '<input type="date" id="poc-dateedit-'+i+'" value="'+po.date+'" '
+    + 'onclick="event.stopPropagation()" '
+    + 'style="font-size:11px;padding:2px 4px;border:1px solid #2E75B6;border-radius:4px;font-family:Arial,sans-serif">'
+    + ' <button class="btn btn-p" style="font-size:10px;padding:2px 6px" onclick="event.stopPropagation();savePODate('+i+')">Save</button>'
+    + ' <button class="btn" style="font-size:10px;padding:2px 6px" onclick="event.stopPropagation();renderPOCards()">Cancel</button>';
+  document.getElementById('poc-dateedit-'+i).focus();
+}
+
+function savePODate(i){
+  if(!IS_EDITOR) return;
+  var po = cPOs[i];
+  if(!po) return;
+  var newDate = document.getElementById('poc-dateedit-'+i).value;
+  if(!newDate){ alert('Please choose a date.'); return; }
+  po.date = newDate;
+  // Recalculate everything that depends on the arrival date
+  recalcContainers(); recalcQtys();
+  updateStats(); renderTable(); renderPOCards(); renderProj(); renderRW(); updateCapSum();
+  saveState();
 }
 
 function renderProj(){
