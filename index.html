@@ -349,7 +349,7 @@ body.viewer-mode .view-only{display:block !important}
 
     <!-- Filters -->
     <div class="filters">
-      <input type="text" id="srch" placeholder="&#128269; Search code or description..." oninput="renderTable()">
+      <input type="text" id="srch" placeholder="&#128269; Search code or description (e.g. CICJ0193 black)..." oninput="renderTable()">
       <select id="sfilt" onchange="renderTable()">
         <option value="">All items</option>
         <option value="active">Active only (hide OBS &amp; REQ)</option>
@@ -971,7 +971,11 @@ function tickAll(state){ if(!IS_EDITOR) return;
   var of=document.getElementById('ofilt').value;
   rows.forEach(function(r){
     // Match same filter logic as renderTable
-    if(srch&&r.code.toLowerCase().indexOf(srch)<0&&r.desc.toLowerCase().indexOf(srch)<0) return;
+    if(srch){
+      var hay=(r.code+' '+r.desc).toLowerCase();
+      var words=srch.split(/\s+/).filter(function(w){return w!=='';});
+      if(!words.every(function(w){return hay.indexOf(w)>=0;})) return;
+    }
     if(sf==='active'&&(r.status==='obsolete'||r.status==='request')) return;
     else if(sf&&sf!=='active'&&r.status!==sf) return;
     if(of==='air'&&r.airFreightQty<=0) return;
@@ -1109,8 +1113,15 @@ function renderTable(){
       r.wkCover=-1;
     }
   });
+  // Multi-word search: every word must appear in the code or description (AND match).
+  // Lets you narrow e.g. "CICJ0193 black" to all sizes of that style in black.
+  var srchWords=srch.split(/\s+/).filter(function(w){return w!=='';});
   var data=rows.filter(function(r){
-    if(srch&&r.code.toLowerCase().indexOf(srch)<0&&r.desc.toLowerCase().indexOf(srch)<0) return false;
+    if(srchWords.length){
+      var hay=(r.code+' '+r.desc).toLowerCase();
+      var allMatch=srchWords.every(function(w){ return hay.indexOf(w)>=0; });
+      if(!allMatch) return false;
+    }
     if(sf==='active'&&(r.status==='obsolete'||r.status==='request')) return false;
     else if(sf&&sf!=='active'&&r.status!==sf) return false;
     if(of==='air'&&r.airFreightQty<=0) return false;
