@@ -472,6 +472,7 @@ body.viewer-mode .view-only{display:block !important}
 // ── State ──────────────────────────────────────────────────────────────────
 var rows = [], cPOs = [], bookedPOs = [], sortCol = 'weeksOfCover', sortAsc = true;
 var openPOMonths = {};
+var selectedBookedPO = null;
 var TARGET = 12, CONT_LEAD = 13, AIR_LEAD = 3, RWWKS = 20;
 var selCtName = null, selCtCap = 0, nextContDate = null;
 var selectedPO = null; // which container tile is selected to show its projection
@@ -711,6 +712,33 @@ function poMonthLabel(mk){
 }
 function togglePOMonth(mk){ openPOMonths[mk]=!openPOMonths[mk]; renderBookedPOs(); }
 
+function toggleBookedPO(ref){
+  selectedBookedPO = (selectedBookedPO===ref) ? null : ref;
+  renderBookedPOs();
+}
+
+// Build the contents table for a booked container
+function bookedPOContentsHTML(po){
+  var rowsH=po.items.map(function(it){
+    var r=rows.find(function(x){return x.code===it.code;});
+    var desc=r?r.desc:'';
+    return '<tr>'
+      +'<td style="font-family:monospace;font-size:11px">'+esc(it.code)+'</td>'
+      +'<td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(desc)+'">'+esc(desc)+'</td>'
+      +'<td style="text-align:right;font-weight:700">'+Math.round(it.qty).toLocaleString()+'</td>'
+      +'</tr>';
+  }).join('');
+  var tot=Math.round(po.items.reduce(function(s,it){return s+it.qty;},0));
+  return '<div style="background:#fff;border:1px solid #a7d4bb;border-radius:7px;margin:6px 0 10px;overflow:hidden">'
+    +'<div style="background:#065f46;color:#fff;padding:8px 12px;font-size:12px;font-weight:600">&#10003; '+esc(po.ref)+' — contents (booked in '+fmtD(po.bookedDate)+')</div>'
+    +'<div style="overflow-x:auto;-webkit-overflow-scrolling:touch">'
+    +'<table class="ptbl" style="width:100%"><thead><tr>'
+    +'<th style="text-align:left">SKU</th><th style="text-align:left">Description</th><th style="text-align:right">Qty</th>'
+    +'</tr></thead><tbody>'+rowsH
+    +'<tr style="border-top:2px solid #dde3ed"><td colspan="2" style="text-align:right;font-weight:700">Total units</td><td style="text-align:right;font-weight:700;color:#065f46">'+tot.toLocaleString()+'</td></tr>'
+    +'</tbody></table></div></div>';
+}
+
 function renderBookedPOs(){
   var w=document.getElementById('bookedCards');
   if(!w) return;
@@ -728,19 +756,26 @@ function renderBookedPOs(){
   function poCardHTML(o){
     var po=o.po, i=o.i;
     var tot=Math.round(po.items.reduce(function(s,it){return s+it.qty;},0));
-    return '<div class="poc" style="border-color:#a7d4bb;background:#f6fdf9">'
+    var isSel=(selectedBookedPO===po.ref);
+    return '<div class="poc'+(isSel?' poc-selected':'')+'" style="border-color:#a7d4bb;background:#f6fdf9;cursor:pointer" onclick="toggleBookedPO(\''+esc(po.ref).replace(/'/g,"\\'")+'\')">'
       +'<div class="poc-ref" style="color:#065f46">&#10003; '+esc(po.ref)+'</div>'
       +'<div class="poc-date">Arrived: '+fmtD(po.date)+'</div>'
       +'<div class="poc-date" style="color:#065f46;font-weight:600">Booked in: '+fmtD(po.bookedDate)+'</div>'
       +'<div style="font-size:11px;color:#4b5563"><strong>'+po.items.length+'</strong> SKUs | <strong>'+tot.toLocaleString()+'</strong> units</div>'
-      +'<button class="btn edit-only" style="font-size:10px;padding:4px 8px;margin-top:6px;width:100%" onclick="undoBookPO('+i+')">&#8634; Undo booking</button>'
+      +'<div style="font-size:10px;color:#065f46;margin-top:4px;font-weight:600">'+(isSel?'&#9650; Hide contents':'&#9660; Click to view contents')+'</div>'
+      +'<button class="btn edit-only" style="font-size:10px;padding:4px 8px;margin-top:6px;width:100%" onclick="event.stopPropagation();undoBookPO('+i+')">&#8634; Undo booking</button>'
       +'</div>';
   }
   var out='';
   mkeys.forEach(function(mk){
     var open=(openPOMonths[mk]!==undefined?openPOMonths[mk]:(mk===mkeys[0]))||srch; // newest month open by default
     out+='<div style="background:#f0f3f8;cursor:pointer;border-radius:6px;padding:7px 10px;margin:8px 0 6px;font-weight:700;color:#374151" onclick="togglePOMonth(\''+mk+'\')">'+(open?'&#9660;':'&#9654;')+' &#128193; '+poMonthLabel(mk)+' ('+months[mk].length+')</div>';
-    if(open){ out+='<div class="po-cards">'+months[mk].map(poCardHTML).join('')+'</div>'; }
+    if(open){
+      out+='<div class="po-cards">'+months[mk].map(poCardHTML).join('')+'</div>';
+      // If a card in this month is selected, show its contents below the grid
+      var selObj=months[mk].find(function(o){ return o.po.ref===selectedBookedPO; });
+      if(selObj){ out+=bookedPOContentsHTML(selObj.po); }
+    }
   });
   w.innerHTML=out;
 }
