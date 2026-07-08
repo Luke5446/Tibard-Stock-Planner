@@ -470,6 +470,7 @@ body.viewer-mode .view-only{display:block !important}
 
 <script>
 // ── State ──────────────────────────────────────────────────────────────────
+var _uidSeq = 1;
 var rows = [], cPOs = [], bookedPOs = [], sortCol = 'weeksOfCover', sortAsc = true;
 var openPOMonths = {};
 var selectedBookedPO = null;
@@ -483,6 +484,11 @@ function pn(s){ return parseFloat((s||'').toString().replace(/[",\s]/g,''))||0; 
 function fC(n){ return n===Math.floor(n)?n.toString():n.toFixed(2).replace(/0$/,''); }
 function esc(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 function sid(c){ return c.replace(/[^a-zA-Z0-9]/g,'_'); }
+// Ensure every row has a stable unique id (rows loaded from storage/publish won't have one).
+// This is what makes duplicate stock codes editable independently.
+function ensureUIDs(){
+  rows.forEach(function(r){ if(!r._uid){ r._uid='r'+(_uidSeq++); } });
+}
 function now(){ return new Date(); }
 function wksUntil(ds){ return Math.max(0,(new Date(ds)-now())/(1000*60*60*24*7)); }
 function fmtD(ds){ if(!ds)return''; return new Date(ds).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}); }
@@ -542,12 +548,20 @@ function loadPaste(){
   }
   if(!built.length){ alert('No valid rows found.\n\nSelect A9:R234 in your Excel, Ctrl+C, then paste here.'); return; }
   rows = built;
+  // Warn if the pasted data contains duplicate stock codes (they still work correctly now,
+  // but a duplicate usually means a data slip worth checking).
+  var seen={}, dups={};
+  built.forEach(function(r){ var k=r.code.toUpperCase(); if(seen[k]) dups[k]=(dups[k]||1)+1; else seen[k]=true; });
+  var dupList=Object.keys(dups);
   document.getElementById('pasteTA').value = '';
   document.getElementById('pastePanel').classList.add('hidden');
   recalcContainers();
   recalcQtys();
   showData();
   saveState();
+  if(dupList.length){
+    alert('\u26A0 Note: '+dupList.length+' duplicate stock code(s) found in the pasted data:\n\n'+dupList.slice(0,10).join('\n')+(dupList.length>10?'\n\u2026and '+(dupList.length-10)+' more':'')+'\n\nThey will still work correctly, but you may want to remove duplicates from your paste.');
+  }
 }
 
 function mkRow(code,desc,carton,sales6m,onSOP,onPO,free,flag){
@@ -556,7 +570,7 @@ function mkRow(code,desc,carton,sales6m,onSOP,onPO,free,flag){
   var wks = wkly>0 ? (free/wkly) : 999;
   var status = flag==='obs'?'obsolete': flag==='req'?'request':
     wkly===0?'healthy': wks<=4?'critical': wks<=8?'low': wks<=12?'ok': wks>25?'overstock': 'healthy';
-  return { code, desc, carton:ctn, sales6m, weeklyUsage:wkly, weeksOfCover:wks,
+  return { _uid:('r'+(_uidSeq++)), code, desc, carton:ctn, sales6m, weeklyUsage:wkly, weeksOfCover:wks,
     onPO, onSOP, free, included:flag==='', status, flag, onContainer:0,
     airFreightQty:0, actAir:0, airManAdj:false, containerOrderQty:0, adjCartons:0, actCartons:0, manAdj:false };
 }
@@ -930,8 +944,8 @@ function rwTblHTML(r,rws){
   return h;
 }
 
-function openRWModal(code){
-  var r=rows.find(function(x){return x.code===code;});
+function openRWModal(uid){
+  var r=rows.find(function(x){return x._uid===uid;});
   if(!r) return;
   var rws=buildRW(r);
   var fn=rws.find(function(w){return w.close<0;});
@@ -975,7 +989,7 @@ function renderRW(){
   if(!active.length){ con.innerHTML='<p style="text-align:center;color:#6b7280;padding:1.5rem;font-size:12px">No items match filter</p>'; return; }
   var bmap={critical:'<span class="badge br">Critical</span>',low:'<span class="badge ba">Low</span>',ok:'<span class="badge bb">OK</span>',healthy:'<span class="badge bg">Healthy</span>',overstock:'<span class="badge bos">Overstock</span>'};
   con.innerHTML=active.map(function(r){
-    var id=sid(r.code);
+    var id=r._uid;  // unique per row - safe even with duplicate codes
     var rws=buildRW(r);
     var fn=rws.find(function(w){return w.close<0;});
     var fa=rws.find(function(w){return w.arr.length>0;});
@@ -1074,11 +1088,11 @@ function updateCapSum(){
 }
 
 // ── Row controls ───────────────────────────────────────────────────────────
-function toggleIncl(code,checked){ if(!IS_EDITOR) return;
-  var r=rows.find(function(x){return x.code===code;});
+function toggleIncl(uid,checked){ if(!IS_EDITOR) return;
+  var r=rows.find(function(x){return x._uid===uid;});
   if(!r) return;
   r.included=checked;
-  var el=document.getElementById('row-'+sid(code));
+  var el=document.getElementById('row-'+r._uid);
   if(el){ checked?el.classList.remove('row-excl'):el.classList.add('row-excl'); }
   updateCapSum(); updateStats(); dbSave();
 }
@@ -1105,57 +1119,57 @@ function tickAll(state){ if(!IS_EDITOR) return;
   });
   renderTable(); updateCapSum(); updateStats(); dbSave();
 }
-function adjAir(code,deltaCartons){ if(!IS_EDITOR) return;
-  var r=rows.find(function(x){return x.code===code;});
+function adjAir(uid,deltaCartons){ if(!IS_EDITOR) return;
+  var r=rows.find(function(x){return x._uid===uid;});
   if(!r) return;
   var step=r.carton*deltaCartons;
   r.actAir=Math.max(0,Math.round(r.actAir+step));
   r.airManAdj=true;
-  var el=document.getElementById('ai-'+sid(code));
+  var el=document.getElementById('ai-'+r._uid);
   if(el) el.value=r.actAir.toLocaleString();
   updateStats(); dbSave();
 }
-function setAir(code,val){ if(!IS_EDITOR) return;
-  var r=rows.find(function(x){return x.code===code;});
+function setAir(uid,val){ if(!IS_EDITOR) return;
+  var r=rows.find(function(x){return x._uid===uid;});
   if(!r) return;
   var n=parseFloat(val.replace(/[^0-9.]/g,''));
   if(isNaN(n)||n<0) n=0;
   r.actAir=Math.round(n);
   r.airManAdj=true;
-  var el=document.getElementById('ai-'+sid(code));
+  var el=document.getElementById('ai-'+r._uid);
   if(el) el.value=r.actAir.toLocaleString();
   updateStats(); dbSave();
 }
-function adjAct(code,delta){ if(!IS_EDITOR) return;
-  var r=rows.find(function(x){return x.code===code;});
+function adjAct(uid,delta){ if(!IS_EDITOR) return;
+  var r=rows.find(function(x){return x._uid===uid;});
   if(!r) return;
   r.actCartons=Math.max(0,Math.round((r.actCartons+delta)*4)/4);
   r.manAdj=true;
-  var el=document.getElementById('cv-'+sid(code));
+  var el=document.getElementById('cv-'+r._uid);
   if(el) el.value=fC(r.actCartons);
-  updateActUnits(code,r);
+  updateActUnits(r);
   updateCapSum(); updateStats(); dbSave();
 }
-function setAct(code,val){ if(!IS_EDITOR) return;
-  var r=rows.find(function(x){return x.code===code;});
+function setAct(uid,val){ if(!IS_EDITOR) return;
+  var r=rows.find(function(x){return x._uid===uid;});
   if(!r) return;
   var n=parseFloat(val.replace(/[^0-9.]/g,''));
   if(isNaN(n)||n<0) n=0;
   r.actCartons=Math.round(n*4)/4;
   r.manAdj=true;
-  var el=document.getElementById('cv-'+sid(code));
+  var el=document.getElementById('cv-'+r._uid);
   if(el) el.value=fC(r.actCartons);
-  updateActUnits(code,r);
+  updateActUnits(r);
   updateCapSum(); updateStats(); dbSave();
 }
-function updateActUnits(code,r){
-  var el=document.getElementById('au-'+sid(code));
+function updateActUnits(r){
+  var el=document.getElementById('au-'+r._uid);
   if(el){
     var units=Math.round(r.actCartons*r.carton);
     el.innerHTML=units>0?'<span style="font-weight:700;color:#1e40af">'+units.toLocaleString()+'</span>':'<span style="color:#e5e7eb">&mdash;</span>';
   }
   // Also refresh the live Wks cover cell
-  var wc=document.getElementById('wc-'+sid(code));
+  var wc=document.getElementById('wc-'+r._uid);
   if(wc) wc.innerHTML=wkCoverHTML(r);
 }
 
@@ -1265,7 +1279,7 @@ function rowHTML(r){
   var wks=r.weeksOfCover, ws=wks>=99?'99+':wks.toFixed(1);
   var pct=Math.min(wks/TARGET,1)*100;
   var bc=wks<=4?'#ef4444':wks<=8?'#f59e0b':wks<=12?'#3b82f6':'#10b981';
-  var id=sid(r.code);
+  var id=r._uid;  // unique per row - safe even with duplicate codes
   var statusLbl={critical:'Critical',low:'Low',ok:'OK',healthy:'Healthy',overstock:'Overstock',obsolete:'Obsolete',request:'On Request'};
   var statusCls={critical:'br',low:'ba',ok:'bb',healthy:'bg',overstock:'bos',obsolete:'bgr',request:'bp'};
   // Air/cont qty display
@@ -1277,12 +1291,12 @@ function rowHTML(r){
   var wkCoverH = wkCoverHTML(r);
   // Air freight qty - editable input with +/- buttons (in units, stepped by carton)
   var airH = '<div class="cc">'
-    +'<button class="inc-btn" title="-1 carton" onclick="event.stopPropagation();adjAir(\''+esc(r.code)+'\',-1)">&#8722;</button>'
+    +'<button class="inc-btn" title="-1 carton" onclick="event.stopPropagation();adjAir(\''+r._uid+'\',-1)">&#8722;</button>'
     +'<input type="text" class="air-input" id="ai-'+id+'" value="'+(r.actAir>0?r.actAir.toLocaleString():'0')+'"'
     +' onclick="event.stopPropagation()"'
-    +' onchange="event.stopPropagation();setAir(\''+esc(r.code)+'\',this.value)"'
+    +' onchange="event.stopPropagation();setAir(\''+r._uid+'\',this.value)"'
     +' onkeydown="if(event.key===\'Enter\')this.blur()">'
-    +'<button class="inc-btn" title="+1 carton" onclick="event.stopPropagation();adjAir(\''+esc(r.code)+'\',1)">&#43;</button>'
+    +'<button class="inc-btn" title="+1 carton" onclick="event.stopPropagation();adjAir(\''+r._uid+'\',1)">&#43;</button>'
     +'</div>';
   var contH = r.containerOrderQty>0 ? '<span class="cont-qty">'+r.containerOrderQty.toLocaleString()+'</span>' : dash();
   // Rec cartons (calculated, display only)
@@ -1290,19 +1304,19 @@ function rowHTML(r){
   // Actual cartons (editable)
   var act = r.actCartons;
   var ctrlH = '<div class="cc">'
-    +'<button class="inc-btn" title="-1 carton" onclick="event.stopPropagation();adjAct(\''+esc(r.code)+'\',-1)">&#8722;</button>'
+    +'<button class="inc-btn" title="-1 carton" onclick="event.stopPropagation();adjAct(\''+r._uid+'\',-1)">&#8722;</button>'
     +'<input type="text" class="carton-input" id="cv-'+id+'" value="'+fC(act)+'"'
     +' onclick="event.stopPropagation()"'
-    +' onchange="event.stopPropagation();setAct(\''+esc(r.code)+'\',this.value)"'
+    +' onchange="event.stopPropagation();setAct(\''+r._uid+'\',this.value)"'
     +' onkeydown="if(event.key===\'Enter\')this.blur()">'
-    +'<button class="inc-btn" title="+1 carton" onclick="event.stopPropagation();adjAct(\''+esc(r.code)+'\',1)">&#43;</button>'
+    +'<button class="inc-btn" title="+1 carton" onclick="event.stopPropagation();adjAct(\''+r._uid+'\',1)">&#43;</button>'
     +'</div>';
   var sopH  = r.onSOP>0      ? '<span style="font-weight:700;color:#1e40af">'+r.onSOP.toLocaleString()+'</span>' : dash();
   var poH   = r.onPO>0       ? '<span style="font-weight:600">'+r.onPO.toLocaleString()+'</span>'               : dash();
   var contC = r.onContainer>0 ? '<span style="color:#6d28d9;font-weight:600;font-size:11px">'+Math.round(r.onContainer).toLocaleString()+'</span>' : dash();
   var rowCls=(r.status==='obsolete'?'row-obs':r.status==='request'?'row-req':'')+' clickable'+(!r.included?' row-excl':'');
-  var cbH='<input type="checkbox" class="inc-cb"'+(r.included?' checked':'')+' onclick="event.stopPropagation()" onchange="toggleIncl(\''+esc(r.code)+'\',this.checked)">';
-  return '<tr class="'+rowCls.trim()+'" id="row-'+id+'" data-code="'+esc(r.code)+'">'
+  var cbH='<input type="checkbox" class="inc-cb"'+(r.included?' checked':'')+' onclick="event.stopPropagation()" onchange="toggleIncl(\''+r._uid+'\',this.checked)">';
+  return '<tr class="'+rowCls.trim()+'" id="row-'+id+'" data-uid="'+r._uid+'" data-code="'+esc(r.code)+'">'
     +'<td style="text-align:center">'+cbH+'</td>'
     +'<td>'+esc(r.code)+'</td>'
     +'<td title="'+esc(r.desc)+'" style="max-width:185px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(r.desc)+'</td>'
@@ -1436,7 +1450,7 @@ function loadState(){
     if(!raw) return false;
     var s=JSON.parse(raw);
     if(!s.rows||!s.rows.length) return false;
-    rows=s.rows; cPOs=s.cPOs||[]; bookedPOs=s.bookedPOs||[]; nextContDate=s.nextContDate||null;
+    rows=s.rows; cPOs=s.cPOs||[]; bookedPOs=s.bookedPOs||[]; ensureUIDs(); nextContDate=s.nextContDate||null;
     var sa=s.savedAt?new Date(s.savedAt).toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}):'';
     document.getElementById('lastUpdated').textContent='Last saved: '+sa;
     recalcContainers(); recalcQtys(); showData();
@@ -1465,7 +1479,7 @@ function fetchSharedData(cb){
     return r.json();
   }).then(function(s){
     if(s && s.rows && s.rows.length){
-      rows = s.rows; cPOs = s.cPOs || []; bookedPOs = s.bookedPOs || []; nextContDate = s.nextContDate || null;
+      rows = s.rows; ensureUIDs(); cPOs = s.cPOs || []; bookedPOs = s.bookedPOs || []; nextContDate = s.nextContDate || null;
       var sa = s.savedAt ? new Date(s.savedAt).toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
       document.getElementById('lastUpdated').textContent = 'Published: ' + sa;
       var bd = document.getElementById('bannerDate');
@@ -1494,8 +1508,8 @@ document.addEventListener('DOMContentLoaded',function(){
     if(e.target.tagName==='INPUT'||e.target.tagName==='BUTTON') return;
     var tr=e.target.closest('tr');
     if(!tr) return;
-    var code=tr.getAttribute('data-code');
-    if(code) openRWModal(code);
+    var uid=tr.getAttribute('data-uid');
+    if(uid) openRWModal(uid);
   });
   document.getElementById('rwClose').addEventListener('click',function(){document.getElementById('rwModal').classList.remove('open');});
   document.getElementById('rwModal').addEventListener('click',function(e){if(e.target===this)this.classList.remove('open');});
