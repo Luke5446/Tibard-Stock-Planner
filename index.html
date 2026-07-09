@@ -323,10 +323,11 @@ body.viewer-mode .view-only{display:block !important}
             <label style="font-size:11px;color:#4b5563;display:flex;align-items:center;gap:3px"><input type="checkbox" id="projShort" onchange="renderProj()"> Issues only</label>
             <button class="btn" style="font-size:10px;padding:3px 8px" onclick="selectPO(selectedPO)">&#10005; Close</button>
           </div>
+          <div id="delaySummary" style="display:none;background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;padding:8px 12px;margin-bottom:8px;font-size:12px"></div>
           <div style="overflow-x:auto;border:1px solid #dde3ed;border-radius:7px">
             <table class="ptbl"><thead><tr>
               <th style="text-align:left">SKU</th><th style="text-align:left">Description</th><th style="text-align:left">Container</th>
-              <th>Arrives</th><th>Wks away</th><th>Free stk</th><th>Used</th><th>On cont</th><th>Proj stk</th><th>Proj wks</th><th>Status</th><th>Need next PO</th>
+              <th>Arrives</th><th>Wks away</th><th>Free stk</th><th>Used</th><th>On cont</th><th>Proj stk</th><th>Proj wks</th><th>Status</th><th title="Tick to model this line NOT arriving">Delayed?</th><th>Need next PO</th>
             </tr></thead><tbody id="projBody"></tbody></table>
           </div>
           <p class="foot">Proj stock = Free − (weekly use × weeks away) + container qty. Need next PO = units for 12 wks cover from arrival.</p>
@@ -474,6 +475,7 @@ var _uidSeq = 1;
 var rows = [], cPOs = [], bookedPOs = [], sortCol = 'weeksOfCover', sortAsc = true;
 var openPOMonths = {};
 var selectedBookedPO = null;
+var delayedItems = {};  // key 'poRef|code' -> true when a PO line is flagged delayed (what-if)
 var TARGET = 12, CONT_LEAD = 13, AIR_LEAD = 3, RWWKS = 20;
 var selCtName = null, selCtCap = 0, nextContDate = null;
 var selectedPO = null; // which container tile is selected to show its projection
@@ -850,6 +852,17 @@ function savePODate(i){
   saveState();
 }
 
+function toggleDelayed(poRef, code, isDelayed){
+  var key=poRef+'|'+code;
+  if(isDelayed) delayedItems[key]=true; else delete delayedItems[key];
+  renderProj();
+}
+// Clear all delay flags for the currently selected container
+function clearDelays(){
+  Object.keys(delayedItems).forEach(function(k){ delete delayedItems[k]; });
+  renderProj();
+}
+
 function renderProj(){
   var w=document.getElementById('projWrap');
   var short=document.getElementById('projShort').checked;
@@ -868,21 +881,46 @@ function renderProj(){
       var r=rows.find(function(x){return x.code===it.code;});
       if(!r) return;
       var used=Math.round(r.weeklyUsage*wks);
-      var proj=r.free-used+it.qty;
+      // What-if: if this line is flagged delayed, its qty does NOT arrive
+      var isDelayed=!!delayedItems[po.ref+'|'+it.code];
+      var arriving=isDelayed?0:it.qty;
+      var proj=r.free-used+arriving;
       var pw=r.weeklyUsage>0?(proj/r.weeklyUsage):999;
       var np=r.weeklyUsage>0?Math.max(0,Math.ceil((TARGET*r.weeklyUsage)-proj)):0;
       if(short&&pw>=TARGET) return;
-      prows.push({po:po.ref,date:po.date,wks,code:r.code,desc:r.desc,free:r.free,used,qty:it.qty,proj,pw,np,ctn:r.carton,wu:r.weeklyUsage});
+      prows.push({po:po.ref,date:po.date,wks,code:r.code,desc:r.desc,free:r.free,used,qty:it.qty,delayed:isDelayed,proj,pw,np,ctn:r.carton,wu:r.weeklyUsage});
     });
   });
+  // Build a delay-impact summary (only for the delayed lines on the selected container)
+  var delSummary=document.getElementById('delaySummary');
+  if(delSummary){
+    var delRows=prows.filter(function(p){ return p.delayed; });
+    if(delRows.length){
+      var crit=delRows.filter(function(p){return p.pw<4;}).length;
+      var low=delRows.filter(function(p){return p.pw>=4&&p.pw<12;}).length;
+      var ok=delRows.filter(function(p){return p.pw>=12;}).length;
+      delSummary.style.display='block';
+      delSummary.innerHTML='<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">'
+        +'<strong style="color:#b91c1c">&#9888; If '+delRows.length+' delayed line(s) don\'t arrive:</strong>'
+        +'<span style="color:#b91c1c;font-weight:700">'+crit+' Critical</span>'
+        +'<span style="color:#92400e;font-weight:700">'+low+' Low</span>'
+        +'<span style="color:#065f46;font-weight:700">'+ok+' still OK</span>'
+        +'<button class="btn" style="font-size:11px;padding:3px 10px;margin-left:auto" onclick="clearDelays()">&#10005; Clear delays</button>'
+        +'</div>';
+    } else { delSummary.style.display='none'; delSummary.innerHTML=''; }
+  }
   var tb=document.getElementById('projBody');
-  if(!prows.length){ tb.innerHTML='<tr><td colspan="12" style="text-align:center;padding:1rem;color:#6b7280">No issues — all items project 12+ wks on arrival</td></tr>'; return; }
+  if(!prows.length){ tb.innerHTML='<tr><td colspan="13" style="text-align:center;padding:1rem;color:#6b7280">No issues — all items project 12+ wks on arrival</td></tr>'; return; }
   tb.innerHTML=prows.map(function(p){
     var pw=p.pw>=99?'99+':p.pw.toFixed(1);
     var bc=p.pw<4?'#ef4444':p.pw<8?'#f59e0b':p.pw<12?'#3b82f6':'#10b981';
     var cls=p.pw<4?'br':p.pw<12?'ba':'bg';
     var np=p.np>0?'<span style="color:#b91c1c;font-weight:700">'+(Math.ceil(p.np/p.ctn)*p.ctn).toLocaleString()+' units</span>':'<span style="color:#065f46;font-weight:600">&#10003; OK</span>';
-    return '<tr>'
+    var qtyCell = p.delayed
+      ? '<td style="color:#b91c1c;font-weight:600;text-decoration:line-through">'+Math.round(p.qty).toLocaleString()+'</td>'
+      : '<td style="color:#6d28d9;font-weight:600">'+Math.round(p.qty).toLocaleString()+'</td>';
+    var delToggle='<td style="text-align:center"><label style="cursor:pointer;display:inline-flex;align-items:center;gap:3px;font-size:10px;color:'+(p.delayed?'#b91c1c':'#6b7280')+';font-weight:'+(p.delayed?'700':'400')+'"><input type="checkbox" '+(p.delayed?'checked':'')+' style="cursor:pointer;accent-color:#b91c1c" onchange="toggleDelayed(\''+esc(p.po).replace(/\'/g,"\\'")+'\',\''+esc(p.code).replace(/\'/g,"\\'")+'\',this.checked)">'+(p.delayed?'Delayed':'')+'</label></td>';
+    return '<tr'+(p.delayed?' style="background:#fef2f2"':'')+'>'
       +'<td style="font-family:monospace;font-size:10px">'+esc(p.code)+'</td>'
       +'<td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(p.desc)+'">'+esc(p.desc)+'</td>'
       +'<td><span class="badge bb">'+esc(p.po)+'</span></td>'
@@ -890,10 +928,11 @@ function renderProj(){
       +'<td>'+p.wks.toFixed(1)+'</td>'
       +'<td>'+p.free.toLocaleString()+'</td>'
       +'<td style="color:#92400e">'+p.used.toLocaleString()+'</td>'
-      +'<td style="color:#6d28d9;font-weight:600">'+Math.round(p.qty).toLocaleString()+'</td>'
+      +qtyCell
       +'<td style="font-weight:700;color:'+(p.proj<0?'#b91c1c':'#111827')+'">'+Math.round(p.proj).toLocaleString()+'</td>'
       +'<td><div class="wks-bar"><div class="wks-track"><div class="wks-fill" style="width:'+Math.min(p.pw/TARGET,1)*100+'%;background:'+bc+'"></div></div><span class="wks-num" style="color:'+bc+'">'+pw+'</span></div></td>'
       +'<td><span class="badge '+cls+'">'+(p.pw<4?'Critical':p.pw<12?'Low':'OK')+'</span></td>'
+      +delToggle
       +'<td>'+np+'</td></tr>';
   }).join('');
 }
