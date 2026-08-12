@@ -327,10 +327,10 @@ body.viewer-mode .view-only{display:block !important}
           <div style="overflow-x:auto;border:1px solid #dde3ed;border-radius:7px">
             <table class="ptbl"><thead><tr>
               <th style="text-align:left">SKU</th><th style="text-align:left">Description</th><th style="text-align:left">Container</th>
-              <th>Arrives</th><th>Wks away</th><th>Free stk</th><th>Used</th><th>On cont</th><th>Proj stk</th><th>Proj wks</th><th>Status</th><th title="Tick to model this line NOT arriving">Delayed?</th><th>Need next PO</th>
+              <th>Arrives</th><th>Wks away</th><th>Free stk</th><th>Used</th><th title="Units on other container POs arriving on or before this container">Earlier POs</th><th>On cont</th><th>Proj stk</th><th>Proj wks</th><th>Status</th><th title="Tick to model this line NOT arriving">Delayed?</th><th>Need next PO</th>
             </tr></thead><tbody id="projBody"></tbody></table>
           </div>
-          <p class="foot">Proj stock = Free − (weekly use × weeks away) + container qty. Need next PO = units for 12 wks cover from arrival.</p>
+          <p class="foot">Proj stock = Free − (weekly use × weeks away) + earlier PO arrivals + container qty. Need next PO = units for 12 wks cover from arrival.</p>
         </div>
       </div>
     </div>
@@ -630,7 +630,19 @@ function calcQtys(r){
   // before the next monthly container can arrive. Independent of air freight.
   var stockAtArr = r.free - (r.weeklyUsage * wksToCont);
   rPOs.forEach(function(p){ if(p.wks<=wksToCont) stockAtArr+=p.qty; });
-  var contNeeded = (r.weeklyUsage * TARGET) - stockAtArr;
+  // Container POs landing AFTER the next-container ETA but inside its 12-week
+  // cover window still count: the new order only needs to bridge the gap up to
+  // each later arrival, not duplicate stock that is already on the water.
+  // (rPOs is sorted by arrival above.) With no later POs this reduces to the
+  // plain 12-weeks-cover requirement.
+  var needed = 0, landed = 0;
+  rPOs.forEach(function(p){
+    if(p.wks<=wksToCont || p.wks>=wksToCont+TARGET) return;
+    needed = Math.max(needed, r.weeklyUsage*(p.wks-wksToCont) - landed);
+    landed += p.qty;
+  });
+  needed = Math.max(needed, (r.weeklyUsage * TARGET) - landed);
+  var contNeeded = needed - stockAtArr;
   var contQty = Math.max(0, Math.ceil(contNeeded / r.carton) * r.carton);
 
   return {air:airQty, cont:contQty};
@@ -881,14 +893,25 @@ function renderProj(){
       var r=rows.find(function(x){return x.code===it.code;});
       if(!r) return;
       var used=Math.round(r.weeklyUsage*wks);
+      // Stock for this SKU on OTHER container POs landing on or before this
+      // container also counts towards projected stock on arrival (lines
+      // flagged delayed on those POs are excluded from the what-if too).
+      var earlier=0;
+      cPOs.forEach(function(op){
+        if(op.ref===po.ref) return;
+        if(wksUntil(op.date)>wks) return;
+        op.items.forEach(function(oi){
+          if(oi.code===it.code && !delayedItems[op.ref+'|'+oi.code]) earlier+=oi.qty;
+        });
+      });
       // What-if: if this line is flagged delayed, its qty does NOT arrive
       var isDelayed=!!delayedItems[po.ref+'|'+it.code];
       var arriving=isDelayed?0:it.qty;
-      var proj=r.free-used+arriving;
+      var proj=r.free-used+earlier+arriving;
       var pw=r.weeklyUsage>0?(proj/r.weeklyUsage):999;
       var np=r.weeklyUsage>0?Math.max(0,Math.ceil((TARGET*r.weeklyUsage)-proj)):0;
       if(short&&pw>=TARGET) return;
-      prows.push({po:po.ref,date:po.date,wks,code:r.code,desc:r.desc,free:r.free,used,qty:it.qty,delayed:isDelayed,proj,pw,np,ctn:r.carton,wu:r.weeklyUsage});
+      prows.push({po:po.ref,date:po.date,wks,code:r.code,desc:r.desc,free:r.free,used,earlier,qty:it.qty,delayed:isDelayed,proj,pw,np,ctn:r.carton,wu:r.weeklyUsage});
     });
   });
   // Build a delay-impact summary (only for the delayed lines on the selected container)
@@ -910,7 +933,7 @@ function renderProj(){
     } else { delSummary.style.display='none'; delSummary.innerHTML=''; }
   }
   var tb=document.getElementById('projBody');
-  if(!prows.length){ tb.innerHTML='<tr><td colspan="13" style="text-align:center;padding:1rem;color:#6b7280">No issues — all items project 12+ wks on arrival</td></tr>'; return; }
+  if(!prows.length){ tb.innerHTML='<tr><td colspan="14" style="text-align:center;padding:1rem;color:#6b7280">No issues — all items project 12+ wks on arrival</td></tr>'; return; }
   tb.innerHTML=prows.map(function(p){
     var pw=p.pw>=99?'99+':p.pw.toFixed(1);
     var bc=p.pw<4?'#ef4444':p.pw<8?'#f59e0b':p.pw<12?'#3b82f6':'#10b981';
@@ -928,6 +951,7 @@ function renderProj(){
       +'<td>'+p.wks.toFixed(1)+'</td>'
       +'<td>'+p.free.toLocaleString()+'</td>'
       +'<td style="color:#92400e">'+p.used.toLocaleString()+'</td>'
+      +'<td>'+(p.earlier>0?'<span style="color:#1e40af;font-weight:600">+'+Math.round(p.earlier).toLocaleString()+'</span>':dash())+'</td>'
       +qtyCell
       +'<td style="font-weight:700;color:'+(p.proj<0?'#b91c1c':'#111827')+'">'+Math.round(p.proj).toLocaleString()+'</td>'
       +'<td><div class="wks-bar"><div class="wks-track"><div class="wks-fill" style="width:'+Math.min(p.pw/TARGET,1)*100+'%;background:'+bc+'"></div></div><span class="wks-num" style="color:'+bc+'">'+pw+'</span></div></td>'
