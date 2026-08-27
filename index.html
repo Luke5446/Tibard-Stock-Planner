@@ -149,6 +149,8 @@ table.main tr.clickable:hover td{background:#f0f7ff;cursor:pointer}
 .inc-btn:hover{background:#e8f0fb;border-color:#2E75B6}
 .carton-input{width:34px;text-align:center;font-weight:700;font-size:12px;border:1px solid #c8d0df;border-radius:3px;padding:1px 2px;font-family:Arial,sans-serif;color:#111827}
 .air-input{width:54px;text-align:center;font-weight:700;font-size:12px;border:1px solid #f5c08a;border-radius:3px;padding:1px 2px;font-family:Arial,sans-serif;color:#c2410c}
+.poqty-input{width:58px;text-align:right;font-weight:600;font-size:11px;border:1px solid #d8ccf1;border-radius:3px;padding:2px 4px;font-family:Arial,sans-serif;color:#6d28d9;background:#fff}
+.poqty-input:focus{border-color:#6d28d9;outline:none}
 .cc{display:flex;align-items:center;justify-content:center;gap:2px}
 .inc-cb{width:14px;height:14px;cursor:pointer;accent-color:#1F3864}
 /* paste / form */
@@ -330,7 +332,7 @@ body.viewer-mode .view-only{display:block !important}
               <th>Arrives</th><th>Wks away</th><th>Free stk</th><th>Used</th><th title="Units on other container POs arriving on or before this container">Earlier POs</th><th>On cont</th><th>Proj stk</th><th>Proj wks</th><th>Status</th><th title="Tick to model this line NOT arriving">Delayed?</th><th>Need next PO</th>
             </tr></thead><tbody id="projBody"></tbody></table>
           </div>
-          <p class="foot">Proj stock = Free − (weekly use × weeks away) + earlier PO arrivals + container qty. Need next PO = units for 12 wks cover from arrival.</p>
+          <p class="foot">Proj stock = Free − (weekly use × weeks away) + earlier PO arrivals + container qty. Need next PO = units for 12 wks cover from arrival.<span class="edit-only"> The On cont quantity is editable — type a new figure and press Enter (0 removes the line).</span></p>
         </div>
       </div>
     </div>
@@ -413,7 +415,7 @@ body.viewer-mode .view-only{display:block !important}
     </div></div>
     <p class="foot">
       &#9992; <strong style="color:#c2410c">Air qty</strong> = units to prevent stock running out, with 3 weeks cover (3 wk air lead time).
-      &#128682; <strong style="color:#1e40af">Cont qty</strong> = units so the next container (13 wk lead) gives 12 wks cover on arrival.
+      &#128682; <strong style="color:#1e40af">Cont qty</strong> = units so the next container (13 wk lead) gives 12 wks cover on arrival, counting stock already on order on other containers.
       <strong>Rec crt</strong> = recommended cartons (calculated). <strong>Actual cartons</strong> = your adjusted figure used in export.
       Click any row for runway popup.
     </p>
@@ -589,24 +591,56 @@ function showData(){
 function projStockOnETA(r){
   // Projected stock when the next container (if ordered today) arrives.
   // = free stock - usage over the lead time + any EXISTING container POs landing before then.
+  // Sums every line of a PO in case the same SKU was pasted twice.
   var wksToCont = wksUntil(d2s(getNextDate()));
   var s = r.free - (r.weeklyUsage * wksToCont);
   cPOs.forEach(function(po){
-    var it = po.items.find(function(i){ return i.code===r.code; });
-    if(it && wksUntil(po.date) <= wksToCont) s += it.qty;
+    if(wksUntil(po.date) > wksToCont) return;
+    po.items.forEach(function(i){ if(i.code===r.code) s += i.qty; });
   });
   return s;
+}
+
+// Weeks of cover from the next-container ETA: how long stock lasts from the
+// ETA onwards, counting the units being ordered (actUnits) plus every later
+// container PO that lands before stock runs dry. With no later POs this is
+// simply (stock at ETA + actUnits) / weekly usage — same as the old formula.
+// Keeping this consistent with the bridging maths in calcQtys stops a SKU
+// whose recommendation was correctly reduced from rendering as critical.
+function wksCoverOnETA(r, actUnits){
+  if(r.weeklyUsage<=0) return 999;
+  var wksToCont = wksUntil(d2s(getNextDate()));
+  var later = [];
+  cPOs.forEach(function(po){
+    var w = wksUntil(po.date);
+    if(w <= wksToCont) return;
+    var q = 0;
+    po.items.forEach(function(i){ if(i.code===r.code) q += i.qty; });
+    if(q>0) later.push({wks:w-wksToCont, qty:q});
+  });
+  later.sort(function(a,b){ return a.wks-b.wks; });
+  var s = projStockOnETA(r) + actUnits, t = 0;
+  for(var i=0; i<later.length; i++){
+    var runway = s / r.weeklyUsage;
+    if(runway < later[i].wks - t) return t + Math.max(0, runway);
+    s -= r.weeklyUsage * (later[i].wks - t);
+    s += later[i].qty;
+    t = later[i].wks;
+  }
+  return t + Math.max(0, s / r.weeklyUsage);
 }
 
 function calcQtys(r){
   if(r.flag!=='' || r.weeklyUsage<=0) return {air:0, cont:0};
   var wksToCont = wksUntil(d2s(getNextDate()));
 
-  // Build existing container POs for this SKU
+  // Build existing container POs for this SKU (summing every matching line,
+  // in case the same SKU was pasted twice on one PO)
   var rPOs = [];
   cPOs.forEach(function(po){
-    var it = po.items.find(function(i){ return i.code===r.code; });
-    if(it) rPOs.push({wks:wksUntil(po.date), qty:it.qty});
+    var q = 0;
+    po.items.forEach(function(i){ if(i.code===r.code) q += i.qty; });
+    if(q>0) rPOs.push({wks:wksUntil(po.date), qty:q});
   });
   rPOs.sort(function(a,b){ return a.wks-b.wks; });
 
@@ -678,6 +712,12 @@ function savePO(){ if(!IS_EDITOR) return;
   if(!ref){ alert('Enter a container reference.'); return; }
   if(!date){ alert('Enter an arrival date.'); return; }
   if(!txt){ alert('Paste the SKU/qty data.'); return; }
+  // Refs identify containers everywhere (selection, delay flags, the Earlier
+  // POs credit), so an active duplicate would make those collide.
+  if(cPOs.some(function(p){ return p.ref===ref; })){
+    alert('A container with reference "'+ref+'" is already in the tracker.\n\nUse a unique reference (e.g. "'+ref+'b" for a top-up shipment), or delete the existing one first.');
+    return;
+  }
   var lines = txt.split('\n'), items = [];
   for(var i=0; i<lines.length; i++){
     var parts = lines[i].trim().split('\t');
@@ -698,8 +738,18 @@ function savePO(){ if(!IS_EDITOR) return;
   saveState();
 }
 
+// Drop all delayed what-if flags for a container ref. Called when a PO is
+// removed or booked in so a stale flag can't silently suppress the Earlier
+// POs credit if the same ref is added again later.
+function clearDelaysFor(ref){
+  Object.keys(delayedItems).forEach(function(k){
+    if(k.indexOf(ref+'|')===0) delete delayedItems[k];
+  });
+}
+
 function delPO(idx){
   if(!confirm('Remove "'+cPOs[idx].ref+'"?')) return;
+  clearDelaysFor(cPOs[idx].ref);
   cPOs.splice(idx,1);
   recalcContainers(); recalcQtys(); updateStats(); renderTable(); renderPOCards(); renderProj(); renderRW(); updateCapSum();
   saveState();
@@ -711,6 +761,7 @@ function bookInPO(idx){
   var po=cPOs[idx];
   if(!po) return;
   if(!confirm('Mark container "'+po.ref+'" as booked in?\n\nIt will move from the tracker into the Booked-In Containers history.')) return;
+  clearDelaysFor(po.ref);
   // Stamp with the date booked in
   po.bookedDate=d2s(now());
   bookedPOs.push(po);
@@ -864,6 +915,28 @@ function savePODate(i){
   saveState();
 }
 
+// Inline edit of one line's quantity on a container PO (from the contents
+// popup). Quantities are whole units; 0 offers to remove the line.
+function setPOQty(poIdx, itIdx, val){ if(!IS_EDITOR) return;
+  var po=cPOs[poIdx];
+  if(!po || !po.items[itIdx]){ renderProj(); return; }
+  var it=po.items[itIdx];
+  var n=parseFloat((val||'').toString().replace(/[^0-9.]/g,''));
+  if(isNaN(n)||n<0){ renderProj(); return; }
+  n=Math.round(n);
+  if(n===0){
+    if(!confirm('Remove '+it.code+' from "'+po.ref+'" completely?')){ renderProj(); return; }
+    var code=it.code;
+    po.items.splice(itIdx,1);
+    // Drop the line's delay flag unless another line for the same SKU remains
+    if(!po.items.some(function(i){ return i.code===code; })) delete delayedItems[po.ref+'|'+code];
+  } else {
+    it.qty=n;
+  }
+  recalcContainers(); recalcQtys(); updateStats(); renderTable(); renderPOCards(); renderProj(); renderRW(); updateCapSum();
+  saveState();
+}
+
 function toggleDelayed(poRef, code, isDelayed){
   var key=poRef+'|'+code;
   if(isDelayed) delayedItems[key]=true; else delete delayedItems[key];
@@ -886,10 +959,10 @@ function renderProj(){
   if(ttl) ttl.innerHTML='&#128200; What\'s on '+esc(selectedPO)+' &mdash; projected stock on arrival';
   var fref=selectedPO;
   var prows=[];
-  cPOs.forEach(function(po){
+  cPOs.forEach(function(po,poIdx){
     if(po.ref!==fref) return;
     var wks=wksUntil(po.date);
-    po.items.forEach(function(it){
+    po.items.forEach(function(it,itIdx){
       var r=rows.find(function(x){return x.code===it.code;});
       if(!r) return;
       var used=Math.round(r.weeklyUsage*wks);
@@ -909,9 +982,30 @@ function renderProj(){
       var arriving=isDelayed?0:it.qty;
       var proj=r.free-used+earlier+arriving;
       var pw=r.weeklyUsage>0?(proj/r.weeklyUsage):999;
-      var np=r.weeklyUsage>0?Math.max(0,Math.ceil((TARGET*r.weeklyUsage)-proj)):0;
+      // Need next PO uses the same bridging as calcQtys: POs landing after
+      // this container but inside its 12-week window reduce what the next
+      // order must bring (delayed what-if lines excluded here too).
+      var laterPOs=[];
+      cPOs.forEach(function(op){
+        if(op.ref===po.ref) return;
+        var dt=wksUntil(op.date)-wks;
+        if(dt<=0||dt>=TARGET) return;
+        var q=0;
+        op.items.forEach(function(oi){
+          if(oi.code===it.code && !delayedItems[op.ref+'|'+oi.code]) q+=oi.qty;
+        });
+        if(q>0) laterPOs.push({dt:dt,qty:q});
+      });
+      laterPOs.sort(function(a,b){ return a.dt-b.dt; });
+      var needAtArr=0, landedAfter=0;
+      laterPOs.forEach(function(p){
+        needAtArr=Math.max(needAtArr, r.weeklyUsage*p.dt-landedAfter);
+        landedAfter+=p.qty;
+      });
+      needAtArr=Math.max(needAtArr, (TARGET*r.weeklyUsage)-landedAfter);
+      var np=r.weeklyUsage>0?Math.max(0,Math.ceil(needAtArr-proj)):0;
       if(short&&pw>=TARGET) return;
-      prows.push({po:po.ref,date:po.date,wks,code:r.code,desc:r.desc,free:r.free,used,earlier,qty:it.qty,delayed:isDelayed,proj,pw,np,ctn:r.carton,wu:r.weeklyUsage});
+      prows.push({po:po.ref,date:po.date,wks,code:r.code,desc:r.desc,free:r.free,used,earlier,qty:it.qty,delayed:isDelayed,proj,pw,np,ctn:r.carton,wu:r.weeklyUsage,poIdx,itIdx});
     });
   });
   // Build a delay-impact summary (only for the delayed lines on the selected container)
@@ -939,9 +1033,20 @@ function renderProj(){
     var bc=p.pw<4?'#ef4444':p.pw<8?'#f59e0b':p.pw<12?'#3b82f6':'#10b981';
     var cls=p.pw<4?'br':p.pw<12?'ba':'bg';
     var np=p.np>0?'<span style="color:#b91c1c;font-weight:700">'+(Math.ceil(p.np/p.ctn)*p.ctn).toLocaleString()+' units</span>':'<span style="color:#065f46;font-weight:600">&#10003; OK</span>';
+    // Editors get an inline qty input so a single line can be corrected
+    // without re-uploading the container Excel; viewers see plain text.
+    var qtyDisp = IS_EDITOR
+      ? '<input type="text" class="poqty-input" value="'+Math.round(p.qty).toLocaleString()+'"'
+        +' title="Type a new quantity and press Enter (0 removes the line)"'
+        +' onclick="event.stopPropagation()"'
+        +' onchange="setPOQty('+p.poIdx+','+p.itIdx+',this.value)"'
+        +' onkeydown="if(event.key===\'Enter\')this.blur()"'
+        +(p.delayed?' style="color:#b91c1c;border-color:#fca5a5;text-decoration:line-through"':'')
+        +'>'
+      : Math.round(p.qty).toLocaleString();
     var qtyCell = p.delayed
-      ? '<td style="color:#b91c1c;font-weight:600;text-decoration:line-through">'+Math.round(p.qty).toLocaleString()+'</td>'
-      : '<td style="color:#6d28d9;font-weight:600">'+Math.round(p.qty).toLocaleString()+'</td>';
+      ? '<td style="color:#b91c1c;font-weight:600;text-decoration:line-through">'+qtyDisp+'</td>'
+      : '<td style="color:#6d28d9;font-weight:600">'+qtyDisp+'</td>';
     var delToggle='<td style="text-align:center"><label style="cursor:pointer;display:inline-flex;align-items:center;gap:3px;font-size:10px;color:'+(p.delayed?'#b91c1c':'#6b7280')+';font-weight:'+(p.delayed?'700':'400')+'"><input type="checkbox" '+(p.delayed?'checked':'')+' style="cursor:pointer;accent-color:#b91c1c" onchange="toggleDelayed(\''+esc(p.po).replace(/\'/g,"\\'")+'\',\''+esc(p.code).replace(/\'/g,"\\'")+'\',this.checked)">'+(p.delayed?'Delayed':'')+'</label></td>';
     return '<tr'+(p.delayed?' style="background:#fef2f2"':'')+'>'
       +'<td style="font-family:monospace;font-size:10px">'+esc(p.code)+'</td>'
@@ -965,8 +1070,9 @@ function renderProj(){
 function buildRW(r){
   var cs=[];
   cPOs.forEach(function(po){
-    var it=po.items.find(function(i){return i.code===r.code;});
-    if(it) cs.push({ref:po.ref,qty:it.qty,wks:wksUntil(po.date)});
+    var q=0;
+    po.items.forEach(function(i){ if(i.code===r.code) q+=i.qty; });
+    if(q>0) cs.push({ref:po.ref,qty:q,wks:wksUntil(po.date)});
   });
   cs.sort(function(a,b){return a.wks-b.wks;});
   var rws=[], stk=r.free, n=now();
@@ -1242,9 +1348,7 @@ function wkCoverHTML(r){
   if(r.weeklyUsage<=0) return '<span style="color:#6b7280;font-size:11px">No sales</span>';
   var actUnits = r.actCartons * r.carton;
   if(actUnits<=0) return '<span style="color:#e5e7eb">&mdash;</span>';
-  var stockOnArrival = projStockOnETA(r) + actUnits;
-  var wks = stockOnArrival / r.weeklyUsage;
-  if(wks<0) wks=0;
+  var wks = wksCoverOnETA(r, actUnits);
   var col = wks<4?'#b91c1c':wks<8?'#92400e':wks<=12?'#1e40af':wks>25?'#166534':'#065f46';
   return '<span style="font-weight:700;color:'+col+'">'+wks.toFixed(1)+'</span>';
 }
@@ -1303,7 +1407,7 @@ function renderTable(){
   rows.forEach(function(r){
     if(r.weeklyUsage>0){
       var au=r.actCartons*r.carton;
-      r.wkCover=(au>0)?((projStockOnETA(r)+au)/r.weeklyUsage):-1;
+      r.wkCover=(au>0)?wksCoverOnETA(r,au):-1;
     } else {
       r.wkCover=-1;
     }
