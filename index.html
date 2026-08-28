@@ -323,6 +323,9 @@ body.viewer-mode .view-only{display:block !important}
           <div style="display:flex;align-items:center;gap:9px;margin-bottom:6px;flex-wrap:wrap">
             <strong id="projTitle" style="font-size:12px;color:#1F3864">&#128200; Projected Stock on Arrival</strong>
             <label style="font-size:11px;color:#4b5563;display:flex;align-items:center;gap:3px"><input type="checkbox" id="projShort" onchange="renderProj()"> Issues only</label>
+            <button class="btn edit-only" id="poEditBtn" style="font-size:10px;padding:3px 8px" onclick="startPOEdit()">&#9998; Edit quantities</button>
+            <button class="btn btn-p edit-only hidden" id="poSaveBtn" style="font-size:10px;padding:3px 8px" onclick="savePOEdits()">&#10003; Save changes</button>
+            <button class="btn edit-only hidden" id="poCancelBtn" style="font-size:10px;padding:3px 8px" onclick="cancelPOEdits()">&#10005; Cancel</button>
             <button class="btn" style="font-size:10px;padding:3px 8px" onclick="selectPO(selectedPO)">&#10005; Close</button>
           </div>
           <div id="delaySummary" style="display:none;background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;padding:8px 12px;margin-bottom:8px;font-size:12px"></div>
@@ -332,7 +335,7 @@ body.viewer-mode .view-only{display:block !important}
               <th>Arrives</th><th>Wks away</th><th>Free stk</th><th>Used</th><th title="Units on other container POs arriving on or before this container">Earlier POs</th><th>On cont</th><th>Proj stk</th><th>Proj wks</th><th>Status</th><th title="Tick to model this line NOT arriving">Delayed?</th><th>Need next PO</th>
             </tr></thead><tbody id="projBody"></tbody></table>
           </div>
-          <p class="foot">Proj stock = Free − (weekly use × weeks away) + earlier PO arrivals + container qty. Need next PO = units for 12 wks cover from arrival.<span class="edit-only"> The On cont quantity is editable — type a new figure and press Enter (0 removes the line).</span></p>
+          <p class="foot">Proj stock = Free − (weekly use × weeks away) + earlier PO arrivals + container qty. Need next PO = units for 12 wks cover from arrival.<span class="edit-only"> Click &#9998; Edit quantities to change what's on this container — edits only apply when you press Save (0 removes a line).</span></p>
         </div>
       </div>
     </div>
@@ -478,6 +481,8 @@ var rows = [], cPOs = [], bookedPOs = [], sortCol = 'weeksOfCover', sortAsc = tr
 var openPOMonths = {};
 var selectedBookedPO = null;
 var delayedItems = {};  // key 'poRef|code' -> true when a PO line is flagged delayed (what-if)
+var poEditMode = false;      // true while the contents popup is in edit-quantities mode
+var pendingPOEdits = {};     // key 'poIdx|itIdx' -> staged qty, applied on Save
 var TARGET = 12, CONT_LEAD = 13, AIR_LEAD = 3, RWWKS = 20;
 var selCtName = null, selCtCap = 0, nextContDate = null;
 var selectedPO = null; // which container tile is selected to show its projection
@@ -883,6 +888,7 @@ function renderPOCards(){
 
 function selectPO(ref){
   selectedPO = (selectedPO===ref) ? null : ref;
+  poEditMode=false; pendingPOEdits={};   // discard unsaved edits when switching/closing
   renderPOCards();
   renderProj();
 }
@@ -915,24 +921,59 @@ function savePODate(i){
   saveState();
 }
 
-// Inline edit of one line's quantity on a container PO (from the contents
-// popup). Quantities are whole units; 0 offers to remove the line.
-function setPOQty(poIdx, itIdx, val){ if(!IS_EDITOR) return;
+// ── Edit-quantities mode for the contents popup ─────────────────────────────
+// Quantities stay read-only until the pencil is clicked; edits are staged in
+// pendingPOEdits and only applied to the PO when Save is pressed.
+function startPOEdit(){ if(!IS_EDITOR) return;
+  poEditMode=true; pendingPOEdits={};
+  // Show every line while editing, not just the issues
+  var ps=document.getElementById('projShort');
+  if(ps) ps.checked=false;
+  renderProj();
+}
+
+function cancelPOEdits(){ poEditMode=false; pendingPOEdits={}; renderProj(); }
+
+function stagePOQty(poIdx, itIdx, val){ if(!IS_EDITOR || !poEditMode) return;
   var po=cPOs[poIdx];
   if(!po || !po.items[itIdx]){ renderProj(); return; }
-  var it=po.items[itIdx];
   var n=parseFloat((val||'').toString().replace(/[^0-9.]/g,''));
   if(isNaN(n)||n<0){ renderProj(); return; }
   n=Math.round(n);
-  if(n===0){
-    if(!confirm('Remove '+it.code+' from "'+po.ref+'" completely?')){ renderProj(); return; }
-    var code=it.code;
-    po.items.splice(itIdx,1);
-    // Drop the line's delay flag unless another line for the same SKU remains
-    if(!po.items.some(function(i){ return i.code===code; })) delete delayedItems[po.ref+'|'+code];
-  } else {
-    it.qty=n;
-  }
+  var key=poIdx+'|'+itIdx;
+  if(n===Math.round(po.items[itIdx].qty)) delete pendingPOEdits[key];
+  else pendingPOEdits[key]=n;
+  renderProj();
+}
+
+function savePOEdits(){ if(!IS_EDITOR || !poEditMode) return;
+  var keys=Object.keys(pendingPOEdits);
+  if(!keys.length){ poEditMode=false; renderProj(); return; }
+  var edits=keys.map(function(k){ var p=k.split('|'); return {poIdx:+p[0], itIdx:+p[1], qty:pendingPOEdits[k]}; });
+  // Confirm any lines set to 0 before removing them
+  var removals=edits.filter(function(e){ return e.qty===0; })
+    .map(function(e){ var po=cPOs[e.poIdx]; var it=po&&po.items[e.itIdx]; return it?it.code:null; })
+    .filter(Boolean);
+  var msg='Save '+keys.length+' quantity change(s)?'
+    +(removals.length?'\n\n'+removals.length+' line(s) set to 0 will be REMOVED:\n'+removals.join('\n'):'');
+  if(!confirm(msg)) return;
+  edits.forEach(function(e){
+    if(e.qty===0) return;
+    var po=cPOs[e.poIdx];
+    if(po && po.items[e.itIdx]) po.items[e.itIdx].qty=e.qty;
+  });
+  // Splice removals highest index first so earlier indices stay valid
+  edits.filter(function(e){ return e.qty===0; })
+    .sort(function(a,b){ return b.itIdx-a.itIdx; })
+    .forEach(function(e){
+      var po=cPOs[e.poIdx];
+      if(!po || !po.items[e.itIdx]) return;
+      var code=po.items[e.itIdx].code;
+      po.items.splice(e.itIdx,1);
+      // Drop the line's delay flag unless another line for the same SKU remains
+      if(!po.items.some(function(i){ return i.code===code; })) delete delayedItems[po.ref+'|'+code];
+    });
+  poEditMode=false; pendingPOEdits={};
   recalcContainers(); recalcQtys(); updateStats(); renderTable(); renderPOCards(); renderProj(); renderRW(); updateCapSum();
   saveState();
 }
@@ -957,6 +998,15 @@ function renderProj(){
   // Heading shows which container is selected
   var ttl=document.getElementById('projTitle');
   if(ttl) ttl.innerHTML='&#128200; What\'s on '+esc(selectedPO)+' &mdash; projected stock on arrival';
+  // Pencil / Save / Cancel visibility follows edit mode
+  var eb=document.getElementById('poEditBtn'), sb=document.getElementById('poSaveBtn'), cb=document.getElementById('poCancelBtn');
+  if(eb) eb.classList.toggle('hidden', poEditMode);
+  if(sb){
+    sb.classList.toggle('hidden', !poEditMode);
+    var nEdits=Object.keys(pendingPOEdits).length;
+    sb.innerHTML='&#10003; Save changes'+(nEdits?' ('+nEdits+')':'');
+  }
+  if(cb) cb.classList.toggle('hidden', !poEditMode);
   var fref=selectedPO;
   var prows=[];
   cPOs.forEach(function(po,poIdx){
@@ -1033,17 +1083,24 @@ function renderProj(){
     var bc=p.pw<4?'#ef4444':p.pw<8?'#f59e0b':p.pw<12?'#3b82f6':'#10b981';
     var cls=p.pw<4?'br':p.pw<12?'ba':'bg';
     var np=p.np>0?'<span style="color:#b91c1c;font-weight:700">'+(Math.ceil(p.np/p.ctn)*p.ctn).toLocaleString()+' units</span>':'<span style="color:#065f46;font-weight:600">&#10003; OK</span>';
-    // Editors get an inline qty input so a single line can be corrected
-    // without re-uploading the container Excel; viewers see plain text.
-    var qtyDisp = IS_EDITOR
-      ? '<input type="text" class="poqty-input" value="'+Math.round(p.qty).toLocaleString()+'"'
-        +' title="Type a new quantity and press Enter (0 removes the line)"'
+    // Quantities are read-only until the pencil puts the popup in edit mode;
+    // staged (unsaved) values render highlighted and only apply on Save.
+    var qtyDisp;
+    if(IS_EDITOR && poEditMode){
+      var ekey=p.poIdx+'|'+p.itIdx;
+      var staged=(pendingPOEdits[ekey]!==undefined)?pendingPOEdits[ekey]:Math.round(p.qty);
+      var isStaged=(pendingPOEdits[ekey]!==undefined);
+      var qstyle=(p.delayed?'color:#b91c1c;border-color:#fca5a5;text-decoration:line-through;':'')
+        +(isStaged?'background:#fef9c3;border-color:#f59e0b;':'');
+      qtyDisp='<input type="text" class="poqty-input" value="'+staged.toLocaleString()+'"'
+        +' title="Type a new quantity (0 removes the line) — applied when you press Save"'
+        +(qstyle?' style="'+qstyle+'"':'')
         +' onclick="event.stopPropagation()"'
-        +' onchange="setPOQty('+p.poIdx+','+p.itIdx+',this.value)"'
-        +' onkeydown="if(event.key===\'Enter\')this.blur()"'
-        +(p.delayed?' style="color:#b91c1c;border-color:#fca5a5;text-decoration:line-through"':'')
-        +'>'
-      : Math.round(p.qty).toLocaleString();
+        +' onchange="stagePOQty('+p.poIdx+','+p.itIdx+',this.value)"'
+        +' onkeydown="if(event.key===\'Enter\')this.blur()">';
+    } else {
+      qtyDisp=Math.round(p.qty).toLocaleString();
+    }
     var qtyCell = p.delayed
       ? '<td style="color:#b91c1c;font-weight:600;text-decoration:line-through">'+qtyDisp+'</td>'
       : '<td style="color:#6d28d9;font-weight:600">'+qtyDisp+'</td>';
