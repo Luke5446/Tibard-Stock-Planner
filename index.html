@@ -1724,18 +1724,37 @@ var DEFAULT_CUSTOMER_MAPS={ booker:{
   'TWCT3082MM03':{ccode:'M186646',caseQty:9},
   'TWCT3082MM26':{ccode:'M186654',caseQty:9},
   'TWTB0231MM03':{ccode:'M186706',caseQty:12},
-  'TWHTA9200001':{ccode:'M187622',caseQty:10}
+  'TWHTA9200001':{ccode:'M187622',caseQty:10,unit:'pack of 50'}   // bought and sold as packs, not each
 }};
-var customerMaps={};   // {custKey:{code:{ccode,caseQty}}} — editor overrides, saved with the plan
+var customerMaps={};   // {custKey:{code:{ccode,caseQty,unit}}} — editor overrides, saved with the plan
+
+// Names shown to customers in place of our container refs. A rule hides
+// supplier names automatically (any "Supertouch" PO shows as "ST");
+// containerAliases holds per-ref overrides set by the editor. Both affect
+// only the customer report — the planner keeps the real refs.
+var SUPPLIER_ALIASES=[{match:'supertouch', alias:'ST'}];
+var containerAliases={};   // {ref: name shown to customers}
+function custContName(ref){
+  if(containerAliases[ref]) return containerAliases[ref];
+  var low=(ref||'').toLowerCase();
+  for(var i=0;i<SUPPLIER_ALIASES.length;i++){ if(low.indexOf(SUPPLIER_ALIASES[i].match)>=0) return SUPPLIER_ALIASES[i].alias; }
+  return ref;
+}
+function setContAlias(ref, val){ if(!IS_EDITOR) return;
+  var v=(val||'').trim();
+  if(v && v!==ref) containerAliases[ref]=v; else delete containerAliases[ref];
+  dbSave(); renderReport();
+}
 
 function getCustomer(key){ return CUSTOMERS.find(function(c){ return c.key===key; })||CUSTOMERS[0]; }
 function custMap(cust){
   var out={}, d=DEFAULT_CUSTOMER_MAPS[cust.key]||{}, s=customerMaps[cust.key]||{};
-  Object.keys(d).forEach(function(c){ out[c]={ccode:d[c].ccode,caseQty:d[c].caseQty}; });
+  Object.keys(d).forEach(function(c){ out[c]={ccode:d[c].ccode,caseQty:d[c].caseQty,unit:d[c].unit}; });
   Object.keys(s).forEach(function(c){
     out[c]=out[c]||{};
     if(s[c].ccode!==undefined) out[c].ccode=s[c].ccode;
     if(s[c].caseQty!==undefined) out[c].caseQty=s[c].caseQty;
+    if(s[c].unit!==undefined) out[c].unit=s[c].unit;
   });
   return out;
 }
@@ -1743,12 +1762,17 @@ function custEntry(cust, r){
   var m=custMap(cust)[r.code]||{};
   var edited=!!(customerMaps[cust.key]&&customerMaps[cust.key][r.code]&&customerMaps[cust.key][r.code].caseQty>0);
   return {ccode:m.ccode||'', caseQty:(m.caseQty>0)?m.caseQty:Math.max(1,Math.round(r.carton/4)), isDefaultCase:!(m.caseQty>0),
+    unit:(m.unit||'each'),
     caseSource: edited?'edited':(m.caseQty>0?'from April 2025 report':'default (carton ÷ 4)')};
 }
 function setCustMap(custKey, code, field, val){ if(!IS_EDITOR) return;
   customerMaps[custKey]=customerMaps[custKey]||{};
   customerMaps[custKey][code]=customerMaps[custKey][code]||{};
   if(field==='ccode'){ customerMaps[custKey][code].ccode=(val||'').trim(); }
+  else if(field==='unit'){
+    var u=(val||'').trim();
+    if(u && u.toLowerCase()!=='each') customerMaps[custKey][code].unit=u; else delete customerMaps[custKey][code].unit;
+  }
   else {
     var n=parseFloat((val||'').toString().replace(/[^0-9.]/g,''));
     customerMaps[custKey][code].caseQty=(isNaN(n)||n<=0)?0:Math.round(n);   // 0 = fall back to default
@@ -1777,7 +1801,7 @@ function buildCustomerReport(cust, startOff, nMonths){
     months.push({start:s,end:e,label:s.toLocaleDateString('en-GB',{month:'short',year:'numeric'}),short:s.toLocaleDateString('en-GB',{month:'short'})});
   }
   var winStart=months[0].start, winEnd=months[nMonths-1].end;
-  var conts=cPOs.map(function(po){ return {ref:po.ref,date:new Date(po.date),po:po}; })
+  var conts=cPOs.map(function(po){ return {ref:po.ref,name:custContName(po.ref),date:new Date(po.date),po:po}; })
     .filter(function(c){ return c.date>=winStart && c.date<winEnd && c.po.items.some(function(i){ return i.code.indexOf(cust.prefix)===0 && i.qty>0; }); })
     .sort(function(a,b){ return a.date-b.date; });
   conts.forEach(function(c){ c.month=months.findIndex(function(m){ return c.date>=m.start && c.date<m.end; }); });
@@ -1798,7 +1822,7 @@ function buildCustomerReport(cust, startOff, nMonths){
       stock=stock-fc+arrivals.reduce(function(s,q){ return s+q; },0);
       return {forecast:fc, arrivals:arrivals, end:stock};
     });
-    return {code:r.code, ccode:e.ccode, desc:r.desc, caseQty:e.caseQty, isDefaultCase:e.isDefaultCase, caseSource:e.caseSource, carton:r.carton,
+    return {code:r.code, ccode:e.ccode, desc:r.desc, unit:e.unit, caseQty:e.caseQty, isDefaultCase:e.isDefaultCase, caseSource:e.caseSource, carton:r.carton,
       weekly:r.weeklyUsage, free:r.free, onSO:r.onSOP, opening:opening, months:mcols};
   });
   return {cust:cust, months:months, conts:conts, prods:prods, t0:t0, winStart:winStart, startOff:startOff};
@@ -1810,6 +1834,7 @@ function reportColumns(model){
     {grp:'Product', key:'code', label:'Tibard code', text:true},
     {grp:'Product', key:'ccode', label:model.cust.codeLabel, text:true},
     {grp:'Product', key:'desc', label:'Description', text:true},
+    {grp:'Product', key:'unit', label:'Unit', text:true},
     {grp:'Product', key:'caseQty', label:'Units per case'},
     {grp:'Stock today', key:'free', label:'In stock (cases)', cases:true},
     {grp:'Stock today', key:'onSO', label:'Open orders (cases)', cases:true},
@@ -1820,7 +1845,7 @@ function reportColumns(model){
     cols.push({grp:m.label, mi:mi, key:'forecast', label:'Forecast (cases)', cases:true, first:true, cls:'fc'});
     model.conts.forEach(function(c,ci){
       if(c.month!==mi) return;
-      cols.push({grp:m.label, mi:mi, key:'arr', ci:ci, label:c.ref+' due '+c.date.toLocaleDateString('en-GB',{day:'numeric',month:'short'})+' (cases)', html:esc(c.ref)+'<br>due '+c.date.toLocaleDateString('en-GB',{day:'numeric',month:'short'})+' (cases)', cases:true, cls:'arr'});
+      cols.push({grp:m.label, mi:mi, key:'arr', ci:ci, label:c.name+' due '+c.date.toLocaleDateString('en-GB',{day:'numeric',month:'short'})+' (cases)', html:esc(c.name)+'<br>due '+c.date.toLocaleDateString('en-GB',{day:'numeric',month:'short'})+' (cases)', cases:true, cls:'arr'});
     });
     cols.push({grp:m.label, mi:mi, key:'end', label:'Stock end '+m.short+' (cases)', cases:true, cls:'end'});
   });
@@ -1871,7 +1896,7 @@ function renderReport(){
   var model=currentReportModel(), cols=reportColumns(model);
   var meta=document.getElementById('rptMeta');
   if(meta){
-    var contList=model.conts.length?model.conts.map(function(c){ return esc(c.ref)+' ('+fmtD(d2s(c.date))+')'; }).join(', '):'none in this period';
+    var contList=model.conts.length?model.conts.map(function(c){ return esc(c.name)+' ('+fmtD(d2s(c.date))+')'; }).join(', '):'none in this period';
     meta.innerHTML='<strong>'+esc(model.cust.name)+'</strong> &middot; prepared '+fmtD(d2s(model.t0))+' &middot; '+model.prods.length+' products &middot; '
       +'forecast = our sales rate over the last 6 months &middot; containers due: '+contList
       +(model.startOff===0?' &middot; current month pro-rated from today':'');
@@ -1902,17 +1927,31 @@ function renderReportMap(model){
   if(!IS_EDITOR){ w.innerHTML=''; return; }
   var ck=model.cust.key;
   w.innerHTML='<div style="overflow-x:auto"><table class="ptbl"><thead><tr>'
-    +'<th style="text-align:left">Tibard code</th><th style="text-align:left">Description</th><th>Our carton (units)</th><th style="text-align:left">'+esc(model.cust.codeLabel)+'</th><th>Units per case</th><th style="text-align:left">Case size source</th>'
+    +'<th style="text-align:left">Tibard code</th><th style="text-align:left">Description</th><th>Our carton (units)</th><th style="text-align:left">'+esc(model.cust.codeLabel)+'</th><th style="text-align:left" title="What one unit is, e.g. each or pack of 50">Unit</th><th>Units per case</th><th style="text-align:left">Case size source</th>'
     +'</tr></thead><tbody>'
     +model.prods.map(function(p){
       return '<tr><td style="font-family:monospace">'+esc(p.code)+'</td>'
         +'<td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(p.desc)+'">'+esc(p.desc)+'</td>'
         +'<td>'+p.carton+'</td>'
         +'<td style="text-align:left"><input class="map-input" value="'+esc(p.ccode)+'" placeholder="e.g. M186709" onchange="setCustMap(\''+ck+'\',\''+esc(p.code)+'\',\'ccode\',this.value)"></td>'
+        +'<td style="text-align:left"><input class="map-input" value="'+esc(p.unit)+'" placeholder="each" onchange="setCustMap(\''+ck+'\',\''+esc(p.code)+'\',\'unit\',this.value)"></td>'
         +'<td><input class="map-input num" value="'+p.caseQty+'" onchange="setCustMap(\''+ck+'\',\''+esc(p.code)+'\',\'caseQty\',this.value)"></td>'
         +'<td style="text-align:left;color:#6b7280">'+esc(p.caseSource)+'</td></tr>';
     }).join('')
-    +'</tbody></table></div>';
+    +'</tbody></table></div>'
+    // Container names as the customer will see them
+    +'<h3 style="margin-top:14px">&#128666; Container names shown to customers</h3>'
+    +'<p>Supplier names are hidden automatically (any Supertouch PO shows as &ldquo;ST&rdquo;). Type a different name here to override what a container is called on this report; leave blank to use our own reference.</p>'
+    +(model.conts.length
+      ?'<div style="overflow-x:auto"><table class="ptbl" style="max-width:640px"><thead><tr><th style="text-align:left">Our reference</th><th style="text-align:left">Arrives</th><th style="text-align:left">Shown to customer as</th></tr></thead><tbody>'
+        +model.conts.map(function(c){
+          var ov=containerAliases[c.ref]||'';
+          return '<tr><td style="font-family:monospace">'+esc(c.ref)+'</td><td>'+fmtD(d2s(c.date))+'</td>'
+            +'<td style="text-align:left"><input class="map-input" style="width:160px" value="'+esc(ov)+'" placeholder="'+esc(c.name)+'" onchange="setContAlias(\''+esc(c.ref).replace(/'/g,"\\'")+'\',this.value)">'
+            +(ov?'':' <span style="color:#6b7280;font-size:10px">shows as &ldquo;'+esc(c.name)+'&rdquo;</span>')+'</td></tr>';
+        }).join('')
+        +'</tbody></table></div>'
+      :'<p style="color:#6b7280">No containers fall inside this report period.</p>');
 }
 
 function exportReportXlsx(){
@@ -1921,7 +1960,7 @@ function exportReportXlsx(){
   var grid=[], merges=[], H=4;   // H = number of preamble rows before the header block
   grid.push([{v:model.cust.name+' — stock & forecast report',s:4}]);
   grid.push(['Prepared '+fmtD(d2s(model.t0))+' by Tibard. Forecast = Tibard sales rate over the last 6 months. Quantities in '+model.cust.name+' cases unless stated.'+(model.startOff===0?' Current month pro-rated from '+fmtD(d2s(model.t0))+'.':'')]);
-  grid.push(['Containers due: '+(model.conts.length?model.conts.map(function(c){ return c.ref+' — '+fmtD(d2s(c.date)); }).join('; '):'none in this period')]);
+  grid.push(['Containers due: '+(model.conts.length?model.conts.map(function(c){ return c.name+' — '+fmtD(d2s(c.date)); }).join('; '):'none in this period')]);
   grid.push([]);
   // group header row with merges
   var g1=[], colIdx=0, groups=[];
@@ -2048,7 +2087,7 @@ function applyMode(){
 // ── Publish data for the team (editor only) ─────────────────────────────────
 function publishData(){ if(!IS_EDITOR){ alert("View-only mode."); return; }
   if(!rows.length){ alert('Load stock data first.'); return; }
-  var state = {rows:rows, cPOs:cPOs, bookedPOs:bookedPOs, nextContDate:nextContDate, customerMaps:customerMaps, savedAt:new Date().toISOString()};
+  var state = {rows:rows, cPOs:cPOs, bookedPOs:bookedPOs, nextContDate:nextContDate, customerMaps:customerMaps, containerAliases:containerAliases, savedAt:new Date().toISOString()};
   var blob = new Blob([JSON.stringify(state)], {type:'application/json'});
   var a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -2062,7 +2101,7 @@ var saveTimer=null;
 function dbSave(){ clearTimeout(saveTimer); saveTimer=setTimeout(saveState,1200); }
 function saveState(){
   try{
-    var state={rows:rows,cPOs:cPOs,bookedPOs:bookedPOs,nextContDate:nextContDate,customerMaps:customerMaps,savedAt:new Date().toISOString()};
+    var state={rows:rows,cPOs:cPOs,bookedPOs:bookedPOs,nextContDate:nextContDate,customerMaps:customerMaps,containerAliases:containerAliases,savedAt:new Date().toISOString()};
     localStorage.setItem('tibard_v5',JSON.stringify(state));
     var ind=document.getElementById('saveInd');
     if(ind){ind.innerHTML='&#10003; Saved';setTimeout(function(){ind.textContent='';},2000);}
@@ -2074,7 +2113,7 @@ function loadState(){
     if(!raw) return false;
     var s=JSON.parse(raw);
     if(!s.rows||!s.rows.length) return false;
-    rows=s.rows; cPOs=s.cPOs||[]; bookedPOs=s.bookedPOs||[]; ensureUIDs(); nextContDate=s.nextContDate||null; customerMaps=s.customerMaps||{};
+    rows=s.rows; cPOs=s.cPOs||[]; bookedPOs=s.bookedPOs||[]; ensureUIDs(); nextContDate=s.nextContDate||null; customerMaps=s.customerMaps||{}; containerAliases=s.containerAliases||{};
     var sa=s.savedAt?new Date(s.savedAt).toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}):'';
     document.getElementById('lastUpdated').textContent='Last saved: '+sa;
     recalcContainers(); recalcQtys(); showData();
@@ -2085,7 +2124,7 @@ function clearAll(){
   if(!confirm('Clear all saved data?')) return;
   try{
     localStorage.removeItem('tibard_v5');
-    rows=[];cPOs=[];bookedPOs=[];nextContDate=null;customerMaps={};
+    rows=[];cPOs=[];bookedPOs=[];nextContDate=null;customerMaps={};containerAliases={};
     document.getElementById('dataWrap').classList.add('hidden');
     document.getElementById('uzone').classList.remove('hidden');
     document.getElementById('sbar').style.display='none';
@@ -2103,7 +2142,7 @@ function fetchSharedData(cb){
     return r.json();
   }).then(function(s){
     if(s && s.rows && s.rows.length){
-      rows = s.rows; ensureUIDs(); cPOs = s.cPOs || []; bookedPOs = s.bookedPOs || []; nextContDate = s.nextContDate || null; customerMaps = s.customerMaps || {};
+      rows = s.rows; ensureUIDs(); cPOs = s.cPOs || []; bookedPOs = s.bookedPOs || []; nextContDate = s.nextContDate || null; customerMaps = s.customerMaps || {}; containerAliases = s.containerAliases || {};
       var sa = s.savedAt ? new Date(s.savedAt).toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
       document.getElementById('lastUpdated').textContent = 'Published: ' + sa;
       var bd = document.getElementById('bannerDate');
