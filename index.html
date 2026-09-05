@@ -1838,7 +1838,7 @@ function reportColumns(model){
     {grp:'Product', key:'caseQty', label:'Units per case'},
     {grp:'Stock today', key:'free', label:'In stock (cases)', cases:true},
     {grp:'Stock today', key:'onSO', label:'Open orders (cases)', cases:true},
-    {grp:'Stock today', key:'weekly', label:'Sales per week (units)', dec:1}
+    {grp:'Stock today', key:'weekly', label:'Sales per week (cases)', cases:true, dec:1}
   ];
   if(model.startOff>0) cols.push({grp:'Stock today', key:'opening', label:'Projected at '+model.winStart.toLocaleDateString('en-GB',{day:'numeric',month:'short'})+' (cases)', cases:true});
   model.months.forEach(function(m,mi){
@@ -1858,7 +1858,7 @@ function reportCell(p, col){
     v = col.key==='forecast'?m.forecast : col.key==='end'?m.end : (m.arrivals[indexOfArrival(col)]||0);
   } else v=p[col.key];
   if(col.text) return v||'';
-  if(col.cases) return Math.round(v/p.caseQty);
+  if(col.cases){ var cs=v/p.caseQty; return col.dec?Math.round(cs*10)/10:Math.round(cs); }
   if(col.dec) return Math.round(v*10)/10;
   return v;
 }
@@ -2042,6 +2042,7 @@ function buildXlsx(sheetName, grid, opts){
   var NS='http://schemas.openxmlformats.org/spreadsheetml/2006/main';
   var sheet='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="'+NS+'">'+viewXml+colsXml+'<sheetData>'+rowsXml+'</sheetData>'+mergeXml+'</worksheet>';
   var styles='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="'+NS+'">'
+    +'<numFmts count="1"><numFmt numFmtId="164" formatCode="#,##0.0"/></numFmts>'
     +'<fonts count="3"><font><sz val="10"/><name val="Arial"/></font><font><b/><sz val="10"/><name val="Arial"/></font><font><b/><sz val="10"/><color rgb="FFFFFFFF"/><name val="Arial"/></font></fonts>'
     +'<fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF1F3864"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFEBF3FB"/></patternFill></fill></fills>'
     +'<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>'
@@ -2052,7 +2053,7 @@ function buildXlsx(sheetName, grid, opts){
     +'<xf numFmtId="0" fontId="1" fillId="3" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>'
     +'<xf numFmtId="3" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>'
     +'<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>'
-    +'<xf numFmtId="4" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>'
+    +'<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>'
     +'</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
   var safeName=sheetName.replace(/[\[\]\*\/\\\?:]/g,' ').slice(0,31);
   var wb='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="'+NS+'" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="'+xmlEsc(safeName)+'" sheetId="1" r:id="rId1"/></sheets></workbook>';
