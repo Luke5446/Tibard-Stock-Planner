@@ -178,6 +178,29 @@ body.viewer-mode #uzone .udesc-edit{display:none}
 .viewer-banner{display:none;background:#dbeafe;border-bottom:1px solid #93c5fd;padding:8px 20px;font-size:12px;color:#1e40af;text-align:center}
 body.viewer-mode .viewer-banner{display:block}
 body.viewer-mode .view-only{display:block !important}
+/* tabs */
+.tabs{background:#fff;border-bottom:1px solid #dde3ed;padding:0 20px;display:flex;gap:4px}
+.tab{background:none;border:none;border-bottom:3px solid transparent;padding:9px 14px;font-size:13px;font-weight:600;color:#4b5563;cursor:pointer;font-family:Arial,sans-serif}
+.tab:hover{color:#1F3864;background:#f0f7ff}
+.tab.tab-active{color:#1F3864;border-bottom-color:#1F3864}
+/* customer report */
+.rpt{width:100%;border-collapse:collapse;font-size:11px;min-width:900px}
+.rpt th{background:#f0f3f8;color:#4b5563;font-weight:600;padding:5px 7px;border-bottom:1px solid #dde3ed;font-size:10px;white-space:nowrap;text-align:right}
+.rpt th.grp{background:#1F3864;color:#fff;text-align:center;border-left:2px solid #fff;font-size:11px}
+.rpt th.grp.alt{background:#2E75B6}
+.rpt th.l,.rpt td.l{text-align:left}
+.rpt th.wrap{white-space:normal;max-width:120px;vertical-align:bottom;line-height:1.3}
+.rpt td{padding:4px 7px;border-bottom:1px solid #f0f3f8;text-align:right;white-space:nowrap}
+.rpt td.mstart,.rpt th.mstart{border-left:2px solid #dde3ed}
+.rpt td.neg{color:#b91c1c;font-weight:700}
+.rpt td.arr{color:#1e40af;font-weight:600}
+.rpt td.fc{color:#92400e}
+.rpt tr:hover td{background:#fafbfd}
+.rpt-ctl{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.rpt-ctl label{font-size:11px;color:#4b5563;font-weight:600;display:flex;align-items:center;gap:4px}
+.rpt-ctl select{font-size:12px;padding:5px 8px;border-radius:5px;border:1px solid #c8d0df;background:#fff;font-family:Arial,sans-serif}
+.map-input{width:90px;font-size:11px;padding:2px 5px;border:1px solid #c8d0df;border-radius:3px;font-family:Arial,sans-serif}
+.map-input.num{width:52px;text-align:right}
 /* export grid */
 .egrid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:10px}
 .egrid label{display:block;font-size:11px;color:#4b5563;font-weight:600;margin-bottom:3px}
@@ -235,6 +258,12 @@ body.viewer-mode .view-only{display:block !important}
 
 <div class="viewer-banner">&#128065; This is a read-only view of the latest stock plan published by the buying team. Tap any row to see its weekly stock runway. <span id="bannerDate" style="font-weight:700"></span></div>
 
+<div class="tabs">
+  <button class="tab tab-active" id="tab-planner" onclick="showTab('planner')">&#128230; Stock planner</button>
+  <button class="tab" id="tab-reports" onclick="showTab('reports')">&#128203; Customer reports</button>
+</div>
+
+<div id="plannerView">
 <div class="toolbar">
   <button class="btn btn-p edit-only" id="pasteBtn" onclick="togglePaste()">&#9998; Paste stock data from Sage</button>
   <span id="skuCount" style="font-size:13px;font-weight:700;color:#1F3864;padding:0 4px"></span>
@@ -425,6 +454,30 @@ body.viewer-mode .view-only{display:block !important}
 
   </div>
 </div>
+</div><!-- /plannerView -->
+
+<!-- Customer reports tab -->
+<div id="reportView" class="hidden">
+  <div class="main">
+    <div class="pbox" style="margin-bottom:12px">
+      <div class="rpt-ctl">
+        <h3 style="margin:0">&#128203; Customer stock &amp; forecast report</h3>
+        <label>Customer <select id="rptCustomer" onchange="renderReport()"></select></label>
+        <label>From <select id="rptStart" onchange="renderReport()"></select></label>
+        <label>Months <select id="rptMonths" onchange="renderReport()"><option value="3" selected>3</option><option value="4">4</option><option value="6">6</option></select></label>
+        <button class="btn btn-p" style="font-size:12px" onclick="exportReportXlsx()">&#8659; Export to Excel</button>
+      </div>
+      <p class="foot" id="rptMeta" style="margin-top:8px"></p>
+    </div>
+    <div class="twrap"><div class="tscroll"><table class="rpt" id="rptTable"></table></div></div>
+    <p class="foot" id="rptFoot"></p>
+    <div class="pbox edit-only" id="rptMapBox" style="margin-top:12px">
+      <h3>&#128279; Code alignment</h3>
+      <p>Enter the customer's own product code and how many units make up one of their cases. Blank case size defaults to a quarter of our carton. Changes save automatically and go out to the team view when you publish.</p>
+      <div id="rptMap"></div>
+    </div>
+  </div>
+</div>
 
 <!-- Runway modal -->
 <div class="modal-bg" id="rwModal">
@@ -589,7 +642,7 @@ function showData(){
   document.getElementById('dataWrap').classList.remove('hidden');
   initSbar();
   document.getElementById('lastUpdated').textContent = 'Loaded: '+now().toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
-  updateStats(); renderTable(); renderPOCards(); renderProj(); renderRW(); updateCapSum(); renderBookedPOs();
+  updateStats(); renderTable(); renderPOCards(); renderProj(); renderRW(); updateCapSum(); renderBookedPOs(); renderReport();
 }
 
 // ── Order qty calculations ─────────────────────────────────────────────────
@@ -1631,6 +1684,392 @@ function doAirExport(){
   closeAir();
 }
 
+// ── Tabs ───────────────────────────────────────────────────────────────────
+var currentTab='planner';
+function showTab(t){
+  currentTab=t;
+  document.getElementById('plannerView').classList.toggle('hidden', t!=='planner');
+  document.getElementById('reportView').classList.toggle('hidden', t!=='reports');
+  document.getElementById('tab-planner').classList.toggle('tab-active', t==='planner');
+  document.getElementById('tab-reports').classList.toggle('tab-active', t==='reports');
+  if(t==='reports') renderReport();
+}
+
+// ── Customer reports ───────────────────────────────────────────────────────
+// A customer is identified by a stock-code prefix. Their own product codes and
+// case sizes live in customerMaps (saved + published), seeded from the defaults
+// below. Structured per customer so more customers — and one day a customer's
+// own self-service view — can be added without touching the report logic.
+var CUSTOMERS=[
+  {key:'booker', name:'Booker', prefix:'TW', codeLabel:'Booker M code'}
+];
+// Seeded from the April 2025 Booker report. A Booker case is an inner POS
+// carton — a quarter of our outer carton for every line in that report.
+var DEFAULT_CUSTOMER_MAPS={ booker:{
+  'TWAP052003':{ccode:'M186709',caseQty:18},
+  'TWAP052031':{ccode:'M186637',caseQty:18},
+  'TWAP052031P':{ccode:'M189683',caseQty:18},
+  'TWAP052034':{ccode:'M186642',caseQty:18},
+  'TWAPP0771224':{ccode:'M283014',caseQty:10},
+  'TWAPP0772224':{ccode:'M283016',caseQty:16},
+  'TWAPP281503':{ccode:'M186633',caseQty:27},
+  'TWCICJRS0193LL01':{ccode:'M186686',caseQty:8},
+  'TWCICJRS0193LL03':{ccode:'M186675',caseQty:8},
+  'TWCICJRS0193MM01':{ccode:'M186682',caseQty:8},
+  'TWCICJRS0193MM03':{ccode:'M186669',caseQty:8},
+  'TWCICJRS0193XL01':{ccode:'M186689',caseQty:8},
+  'TWCICJRS0193XL03':{ccode:'M186678',caseQty:8},
+  'TWCJRS0193MM01':{ccode:'M186695',caseQty:8},
+  'TWCT3082LL03':{ccode:'M186649',caseQty:9},
+  'TWCT3082MM03':{ccode:'M186646',caseQty:9},
+  'TWCT3082MM26':{ccode:'M186654',caseQty:9},
+  'TWTB0231MM03':{ccode:'M186706',caseQty:12},
+  'TWHTA9200001':{ccode:'M187622',caseQty:10,unit:'pack of 50'}   // bought and sold as packs, not each
+}};
+var customerMaps={};   // {custKey:{code:{ccode,caseQty,unit}}} — editor overrides, saved with the plan
+
+// Names shown to customers in place of our container refs. A rule hides
+// supplier names automatically (any "Supertouch" PO shows as "ST");
+// containerAliases holds per-ref overrides set by the editor. Both affect
+// only the customer report — the planner keeps the real refs.
+var SUPPLIER_ALIASES=[{match:'supertouch', alias:'ST'}];
+var containerAliases={};   // {ref: name shown to customers}
+function custContName(ref){
+  if(containerAliases[ref]) return containerAliases[ref];
+  var low=(ref||'').toLowerCase();
+  for(var i=0;i<SUPPLIER_ALIASES.length;i++){ if(low.indexOf(SUPPLIER_ALIASES[i].match)>=0) return SUPPLIER_ALIASES[i].alias; }
+  return ref;
+}
+function setContAlias(ref, val){ if(!IS_EDITOR) return;
+  var v=(val||'').trim();
+  if(v && v!==ref) containerAliases[ref]=v; else delete containerAliases[ref];
+  dbSave(); renderReport();
+}
+
+function getCustomer(key){ return CUSTOMERS.find(function(c){ return c.key===key; })||CUSTOMERS[0]; }
+function custMap(cust){
+  var out={}, d=DEFAULT_CUSTOMER_MAPS[cust.key]||{}, s=customerMaps[cust.key]||{};
+  Object.keys(d).forEach(function(c){ out[c]={ccode:d[c].ccode,caseQty:d[c].caseQty,unit:d[c].unit}; });
+  Object.keys(s).forEach(function(c){
+    out[c]=out[c]||{};
+    if(s[c].ccode!==undefined) out[c].ccode=s[c].ccode;
+    if(s[c].caseQty!==undefined) out[c].caseQty=s[c].caseQty;
+    if(s[c].unit!==undefined) out[c].unit=s[c].unit;
+  });
+  return out;
+}
+function custEntry(cust, r){
+  var m=custMap(cust)[r.code]||{};
+  var edited=!!(customerMaps[cust.key]&&customerMaps[cust.key][r.code]&&customerMaps[cust.key][r.code].caseQty>0);
+  return {ccode:m.ccode||'', caseQty:(m.caseQty>0)?m.caseQty:Math.max(1,Math.round(r.carton/4)), isDefaultCase:!(m.caseQty>0),
+    unit:(m.unit||'each'),
+    caseSource: edited?'edited':(m.caseQty>0?'from April 2025 report':'default (carton ÷ 4)')};
+}
+function setCustMap(custKey, code, field, val){ if(!IS_EDITOR) return;
+  customerMaps[custKey]=customerMaps[custKey]||{};
+  customerMaps[custKey][code]=customerMaps[custKey][code]||{};
+  if(field==='ccode'){ customerMaps[custKey][code].ccode=(val||'').trim(); }
+  else if(field==='unit'){
+    var u=(val||'').trim();
+    if(u && u.toLowerCase()!=='each') customerMaps[custKey][code].unit=u; else delete customerMaps[custKey][code].unit;
+  }
+  else {
+    var n=parseFloat((val||'').toString().replace(/[^0-9.]/g,''));
+    customerMaps[custKey][code].caseQty=(isNaN(n)||n<=0)?0:Math.round(n);   // 0 = fall back to default
+  }
+  dbSave(); renderReport();
+}
+
+function monthStart(d, off){ return new Date(d.getFullYear(), d.getMonth()+off, 1); }
+function custProducts(cust){
+  return rows.filter(function(r){ return r.code.indexOf(cust.prefix)===0; }).filter(function(r){
+    var arriving=cPOs.some(function(po){ return po.items.some(function(i){ return i.code===r.code && i.qty>0; }); });
+    return r.flag==='' || r.free>0 || r.weeklyUsage>0 || arriving;   // drop dead obsolete lines
+  }).sort(function(a,b){ return a.code.localeCompare(b.code); });
+}
+
+// Builds the report model in UNITS; case conversion happens at display/export.
+// Forecast = weekly usage (last 6 months' sales) × weeks in each month; the
+// current month is pro-rated from today. Container arrivals land in the month
+// of their arrival date; overdue POs and anything landing before the first
+// month roll into the opening stock.
+function buildCustomerReport(cust, startOff, nMonths){
+  var tn=now(), t0=new Date(tn.getFullYear(),tn.getMonth(),tn.getDate());
+  var months=[];
+  for(var i=0;i<nMonths;i++){
+    var s=monthStart(t0,startOff+i), e=monthStart(t0,startOff+i+1);
+    months.push({start:s,end:e,label:s.toLocaleDateString('en-GB',{month:'short',year:'numeric'}),short:s.toLocaleDateString('en-GB',{month:'short'})});
+  }
+  var winStart=months[0].start, winEnd=months[nMonths-1].end;
+  var conts=cPOs.map(function(po){ return {ref:po.ref,name:custContName(po.ref),date:new Date(po.date),po:po}; })
+    .filter(function(c){ return c.date>=winStart && c.date<winEnd && c.po.items.some(function(i){ return i.code.indexOf(cust.prefix)===0 && i.qty>0; }); })
+    .sort(function(a,b){ return a.date-b.date; });
+  conts.forEach(function(c){ c.month=months.findIndex(function(m){ return c.date>=m.start && c.date<m.end; }); });
+  var prods=custProducts(cust).map(function(r){
+    var e=custEntry(cust,r);
+    var stock=r.free;
+    var wksBefore=Math.max(0,(winStart-t0)/(7*86400000));
+    stock-=r.weeklyUsage*wksBefore;
+    cPOs.forEach(function(po){ if(new Date(po.date)<winStart) po.items.forEach(function(i){ if(i.code===r.code) stock+=i.qty; }); });
+    var opening=stock;
+    var mcols=months.map(function(m,mi){
+      var from=(m.start>t0)?m.start:t0;
+      var wks=Math.max(0,(m.end-from)/(7*86400000));
+      var fc=r.weeklyUsage*wks;
+      var arrivals=conts.filter(function(c){ return c.month===mi; }).map(function(c){
+        var q=0; c.po.items.forEach(function(i){ if(i.code===r.code) q+=i.qty; }); return q;
+      });
+      stock=stock-fc+arrivals.reduce(function(s,q){ return s+q; },0);
+      return {forecast:fc, arrivals:arrivals, end:stock};
+    });
+    return {code:r.code, ccode:e.ccode, desc:r.desc, unit:e.unit, caseQty:e.caseQty, isDefaultCase:e.isDefaultCase, caseSource:e.caseSource, carton:r.carton,
+      weekly:r.weeklyUsage, free:r.free, onSO:r.onSOP, opening:opening, months:mcols};
+  });
+  return {cust:cust, months:months, conts:conts, prods:prods, t0:t0, winStart:winStart, startOff:startOff};
+}
+
+// Column layout shared by the on-screen table and the Excel export
+function reportColumns(model){
+  var cols=[
+    {grp:'Product', key:'code', label:'Tibard code', text:true},
+    {grp:'Product', key:'ccode', label:model.cust.codeLabel, text:true},
+    {grp:'Product', key:'desc', label:'Description', text:true},
+    {grp:'Product', key:'unit', label:'Unit', text:true},
+    {grp:'Product', key:'caseQty', label:'Units per case'},
+    {grp:'Stock today', key:'free', label:'In stock (cases)', cases:true},
+    {grp:'Stock today', key:'onSO', label:'Open orders (cases)', cases:true},
+    {grp:'Stock today', key:'weekly', label:'Sales per week (units)', dec:1}
+  ];
+  if(model.startOff>0) cols.push({grp:'Stock today', key:'opening', label:'Projected at '+model.winStart.toLocaleDateString('en-GB',{day:'numeric',month:'short'})+' (cases)', cases:true});
+  model.months.forEach(function(m,mi){
+    cols.push({grp:m.label, mi:mi, key:'forecast', label:'Forecast (cases)', cases:true, first:true, cls:'fc'});
+    model.conts.forEach(function(c,ci){
+      if(c.month!==mi) return;
+      cols.push({grp:m.label, mi:mi, key:'arr', ci:ci, label:c.name+' due '+c.date.toLocaleDateString('en-GB',{day:'numeric',month:'short'})+' (cases)', html:esc(c.name)+'<br>due '+c.date.toLocaleDateString('en-GB',{day:'numeric',month:'short'})+' (cases)', cases:true, cls:'arr'});
+    });
+    cols.push({grp:m.label, mi:mi, key:'end', label:'Stock end '+m.short+' (cases)', cases:true, cls:'end'});
+  });
+  return cols;
+}
+function reportCell(p, col){
+  var v;
+  if(col.mi!==undefined){
+    var m=p.months[col.mi];
+    v = col.key==='forecast'?m.forecast : col.key==='end'?m.end : (m.arrivals[indexOfArrival(col)]||0);
+  } else v=p[col.key];
+  if(col.text) return v||'';
+  if(col.cases) return Math.round(v/p.caseQty);
+  if(col.dec) return Math.round(v*10)/10;
+  return v;
+}
+// arrivals for a month are stored in container order; map the column's global
+// container index back to its position within that month
+var _arrIdx={};
+function indexOfArrival(col){ return _arrIdx[col.ci]; }
+
+function fillReportSelects(){
+  var cs=document.getElementById('rptCustomer'), ss=document.getElementById('rptStart');
+  if(cs && !cs.options.length){ cs.innerHTML=CUSTOMERS.map(function(c){ return '<option value="'+c.key+'">'+esc(c.name)+'</option>'; }).join(''); }
+  if(ss && !ss.options.length){
+    var t=now(); var o='';
+    for(var i=0;i<4;i++){ var d=monthStart(t,i); o+='<option value="'+i+'">'+d.toLocaleDateString('en-GB',{month:'long',year:'numeric'})+(i===0?' (current)':'')+'</option>'; }
+    ss.innerHTML=o;
+  }
+}
+function currentReportModel(){
+  fillReportSelects();
+  var cust=getCustomer((document.getElementById('rptCustomer')||{}).value||CUSTOMERS[0].key);
+  var startOff=parseInt((document.getElementById('rptStart')||{}).value,10)||0;
+  var nMonths=parseInt((document.getElementById('rptMonths')||{}).value,10)||3;
+  var model=buildCustomerReport(cust,startOff,nMonths);
+  // container index -> position within its month's arrivals array
+  _arrIdx={};
+  var perMonth={};
+  model.conts.forEach(function(c,ci){ perMonth[c.month]=perMonth[c.month]||0; _arrIdx[ci]=perMonth[c.month]++; });
+  return model;
+}
+
+function renderReport(){
+  var tbl=document.getElementById('rptTable');
+  if(!tbl) return;
+  if(!rows.length){ tbl.innerHTML='<tr><td style="padding:1rem;color:#6b7280">Load stock data first.</td></tr>'; return; }
+  var model=currentReportModel(), cols=reportColumns(model);
+  var meta=document.getElementById('rptMeta');
+  if(meta){
+    var contList=model.conts.length?model.conts.map(function(c){ return esc(c.name)+' ('+fmtD(d2s(c.date))+')'; }).join(', '):'none in this period';
+    meta.innerHTML='<strong>'+esc(model.cust.name)+'</strong> &middot; prepared '+fmtD(d2s(model.t0))+' &middot; '+model.prods.length+' products &middot; '
+      +'forecast = our sales rate over the last 6 months &middot; containers due: '+contList
+      +(model.startOff===0?' &middot; current month pro-rated from today':'');
+  }
+  // group header row
+  var groups=[]; cols.forEach(function(c){ var g=groups[groups.length-1]; if(g&&g.name===c.grp) g.n++; else groups.push({name:c.grp,n:1,month:c.mi!==undefined}); });
+  var h1='<tr>'+groups.map(function(g,i){ return '<th class="grp'+(g.month&&i%2?' alt':'')+'" colspan="'+g.n+'">'+esc(g.name)+'</th>'; }).join('')+'</tr>';
+  var h2='<tr>'+cols.map(function(c){ return '<th class="'+(c.text?'l':'')+(c.first?' mstart':'')+(c.html?' wrap':'')+'">'+(c.html||esc(c.label))+'</th>'; }).join('')+'</tr>';
+  var body=model.prods.map(function(p){
+    return '<tr>'+cols.map(function(c){
+      var v=reportCell(p,c);
+      var cls=(c.text?'l':'')+(c.first?' mstart':'')+(c.cls?' '+c.cls:'')+((!c.text&&v<0)?' neg':'');
+      var txt=c.text?esc(v):(typeof v==='number'?v.toLocaleString(undefined,{maximumFractionDigits:c.dec||0}):'');
+      if(c.key==='arr'&&v===0) txt='<span style="color:#e5e7eb">&mdash;</span>';
+      if(c.key==='ccode'&&!v) txt='<span style="color:#b91c1c">missing</span>';
+      return '<td class="'+cls.trim()+'">'+txt+'</td>';
+    }).join('')+'</tr>';
+  }).join('');
+  tbl.innerHTML='<thead>'+h1+h2+'</thead><tbody>'+(body||'<tr><td colspan="'+cols.length+'" style="padding:1rem;color:#6b7280">No '+esc(model.cust.prefix)+' products found.</td></tr>')+'</tbody>';
+  var foot=document.getElementById('rptFoot');
+  if(foot) foot.innerHTML='Cases = units &divide; units per case, rounded. Stock end month = previous stock &minus; forecast + container arrivals in that month. Open orders are not deducted from stock. Negative figures show where stock would run out before the next container.';
+  renderReportMap(model);
+}
+
+function renderReportMap(model){
+  var w=document.getElementById('rptMap');
+  if(!w) return;
+  if(!IS_EDITOR){ w.innerHTML=''; return; }
+  var ck=model.cust.key;
+  w.innerHTML='<div style="overflow-x:auto"><table class="ptbl"><thead><tr>'
+    +'<th style="text-align:left">Tibard code</th><th style="text-align:left">Description</th><th>Our carton (units)</th><th style="text-align:left">'+esc(model.cust.codeLabel)+'</th><th style="text-align:left" title="What one unit is, e.g. each or pack of 50">Unit</th><th>Units per case</th><th style="text-align:left">Case size source</th>'
+    +'</tr></thead><tbody>'
+    +model.prods.map(function(p){
+      return '<tr><td style="font-family:monospace">'+esc(p.code)+'</td>'
+        +'<td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(p.desc)+'">'+esc(p.desc)+'</td>'
+        +'<td>'+p.carton+'</td>'
+        +'<td style="text-align:left"><input class="map-input" value="'+esc(p.ccode)+'" placeholder="e.g. M186709" onchange="setCustMap(\''+ck+'\',\''+esc(p.code)+'\',\'ccode\',this.value)"></td>'
+        +'<td style="text-align:left"><input class="map-input" value="'+esc(p.unit)+'" placeholder="each" onchange="setCustMap(\''+ck+'\',\''+esc(p.code)+'\',\'unit\',this.value)"></td>'
+        +'<td><input class="map-input num" value="'+p.caseQty+'" onchange="setCustMap(\''+ck+'\',\''+esc(p.code)+'\',\'caseQty\',this.value)"></td>'
+        +'<td style="text-align:left;color:#6b7280">'+esc(p.caseSource)+'</td></tr>';
+    }).join('')
+    +'</tbody></table></div>'
+    // Container names as the customer will see them
+    +'<h3 style="margin-top:14px">&#128666; Container names shown to customers</h3>'
+    +'<p>Supplier names are hidden automatically (any Supertouch PO shows as &ldquo;ST&rdquo;). Type a different name here to override what a container is called on this report; leave blank to use our own reference.</p>'
+    +(model.conts.length
+      ?'<div style="overflow-x:auto"><table class="ptbl" style="max-width:640px"><thead><tr><th style="text-align:left">Our reference</th><th style="text-align:left">Arrives</th><th style="text-align:left">Shown to customer as</th></tr></thead><tbody>'
+        +model.conts.map(function(c){
+          var ov=containerAliases[c.ref]||'';
+          return '<tr><td style="font-family:monospace">'+esc(c.ref)+'</td><td>'+fmtD(d2s(c.date))+'</td>'
+            +'<td style="text-align:left"><input class="map-input" style="width:160px" value="'+esc(ov)+'" placeholder="'+esc(c.name)+'" onchange="setContAlias(\''+esc(c.ref).replace(/'/g,"\\'")+'\',this.value)">'
+            +(ov?'':' <span style="color:#6b7280;font-size:10px">shows as &ldquo;'+esc(c.name)+'&rdquo;</span>')+'</td></tr>';
+        }).join('')
+        +'</tbody></table></div>'
+      :'<p style="color:#6b7280">No containers fall inside this report period.</p>');
+}
+
+function exportReportXlsx(){
+  if(!rows.length){ alert('Load stock data first.'); return; }
+  var model=currentReportModel(), cols=reportColumns(model);
+  var grid=[], merges=[], H=4;   // H = number of preamble rows before the header block
+  grid.push([{v:model.cust.name+' — stock & forecast report',s:4}]);
+  grid.push(['Prepared '+fmtD(d2s(model.t0))+' by Tibard. Forecast = Tibard sales rate over the last 6 months. Quantities in '+model.cust.name+' cases unless stated.'+(model.startOff===0?' Current month pro-rated from '+fmtD(d2s(model.t0))+'.':'')]);
+  grid.push(['Containers due: '+(model.conts.length?model.conts.map(function(c){ return c.name+' — '+fmtD(d2s(c.date)); }).join('; '):'none in this period')]);
+  grid.push([]);
+  // group header row with merges
+  var g1=[], colIdx=0, groups=[];
+  cols.forEach(function(c){ var g=groups[groups.length-1]; if(g&&g.name===c.grp) g.n++; else groups.push({name:c.grp,n:1}); });
+  groups.forEach(function(g){
+    g1[colIdx]={v:g.name,s:1};
+    for(var k=1;k<g.n;k++) g1[colIdx+k]={v:'',s:1};
+    if(g.n>1) merges.push(colLetter(colIdx)+(H+1)+':'+colLetter(colIdx+g.n-1)+(H+1));
+    colIdx+=g.n;
+  });
+  grid.push(g1);
+  grid.push(cols.map(function(c){ return {v:c.label,s:2}; }));
+  model.prods.forEach(function(p){
+    grid.push(cols.map(function(c){
+      var v=reportCell(p,c);
+      if(c.text) return {v:v,s:0};
+      return {v:v,s:c.dec?5:3};
+    }));
+  });
+  var widths=cols.map(function(c){ return c.key==='desc'?44:c.key==='code'?18:c.key==='ccode'?14:c.text?14:12; });
+  var rowHeights={}; rowHeights[H+2]=30;
+  var bytes=buildXlsx(model.cust.name+' '+model.months[0].short+' '+model.months[0].start.getFullYear(), grid, {colWidths:widths, merges:merges, freezeRow:H+2, rowHeights:rowHeights});
+  var blob=new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download=model.cust.name.replace(/\s+/g,'_')+'_stock_report_'+d2s(model.months[0].start).slice(0,7)+'.xlsx'; a.click();
+}
+
+// ── Minimal .xlsx writer (no dependencies, works offline) ──────────────────
+// Builds a single-sheet workbook: inline strings, a few fixed styles, column
+// widths, merged group headers and a frozen header. Zipped with the STORE
+// method so no compression code is needed.
+var CRC_TABLE=(function(){ var t=[],c; for(var n=0;n<256;n++){ c=n; for(var k=0;k<8;k++) c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1); t[n]=c>>>0; } return t; })();
+function crc32(u8){ var c=0xFFFFFFFF; for(var i=0;i<u8.length;i++) c=CRC_TABLE[(c^u8[i])&0xFF]^(c>>>8); return (c^0xFFFFFFFF)>>>0; }
+function zipStore(files){
+  var enc=new TextEncoder(), parts=[], central=[], offset=0, d=new Date();
+  var dosTime=((d.getHours()<<11)|(d.getMinutes()<<5)|(d.getSeconds()>>1))&0xFFFF;
+  var dosDate=(((d.getFullYear()-1980)<<9)|((d.getMonth()+1)<<5)|d.getDate())&0xFFFF;
+  function u16(v){ return [v&0xFF,(v>>>8)&0xFF]; }
+  function u32(v){ return [v&0xFF,(v>>>8)&0xFF,(v>>>16)&0xFF,(v>>>24)&0xFF]; }
+  files.forEach(function(f){
+    var name=enc.encode(f.name), data=f.data, crc=crc32(data);
+    var lh=new Uint8Array([].concat(u32(0x04034b50),u16(20),u16(0),u16(0),u16(dosTime),u16(dosDate),u32(crc),u32(data.length),u32(data.length),u16(name.length),u16(0)));
+    parts.push(lh,name,data);
+    var ch=new Uint8Array([].concat(u32(0x02014b50),u16(20),u16(20),u16(0),u16(0),u16(dosTime),u16(dosDate),u32(crc),u32(data.length),u32(data.length),u16(name.length),u16(0),u16(0),u16(0),u16(0),u32(0),u32(offset)));
+    central.push(ch,name);
+    offset+=lh.length+name.length+data.length;
+  });
+  var cdLen=0; central.forEach(function(p){ cdLen+=p.length; });
+  var end=new Uint8Array([].concat(u32(0x06054b50),u16(0),u16(0),u16(files.length),u16(files.length),u32(cdLen),u32(offset),u16(0)));
+  var all=parts.concat(central,[end]), total=0;
+  all.forEach(function(p){ total+=p.length; });
+  var out=new Uint8Array(total), pos=0;
+  all.forEach(function(p){ out.set(p,pos); pos+=p.length; });
+  return out;
+}
+function xmlEsc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function colLetter(n){ var s=''; n++; while(n>0){ var m=(n-1)%26; s=String.fromCharCode(65+m)+s; n=Math.floor((n-1)/26); } return s; }
+function buildXlsx(sheetName, grid, opts){
+  opts=opts||{};
+  var widths=opts.colWidths||[], merges=opts.merges||[], freezeRow=opts.freezeRow||0, rowHeights=opts.rowHeights||{};
+  var rowsXml='';
+  grid.forEach(function(row,ri){
+    var cells='';
+    (row||[]).forEach(function(cell,ci){
+      if(cell===null||cell===undefined) return;
+      var v=(cell&&typeof cell==='object'&&'v' in cell)?cell.v:cell;
+      var s=(cell&&typeof cell==='object'&&cell.s)?cell.s:0;
+      if(v===null||v===undefined||v==='') { if(!s) return; cells+='<c r="'+colLetter(ci)+(ri+1)+'" s="'+s+'"/>'; return; }
+      var ref=colLetter(ci)+(ri+1);
+      if(typeof v==='number'&&isFinite(v)) cells+='<c r="'+ref+'"'+(s?' s="'+s+'"':'')+'><v>'+v+'</v></c>';
+      else cells+='<c r="'+ref+'"'+(s?' s="'+s+'"':'')+' t="inlineStr"><is><t xml:space="preserve">'+xmlEsc(v)+'</t></is></c>';
+    });
+    var ht=rowHeights[ri+1];
+    rowsXml+='<row r="'+(ri+1)+'"'+(ht?' ht="'+ht+'" customHeight="1"':'')+'>'+cells+'</row>';
+  });
+  var colsXml=widths.length?'<cols>'+widths.map(function(w,i){ return '<col min="'+(i+1)+'" max="'+(i+1)+'" width="'+w+'" customWidth="1"/>'; }).join('')+'</cols>':'';
+  var viewXml=freezeRow?'<sheetViews><sheetView workbookViewId="0"><pane ySplit="'+freezeRow+'" topLeftCell="A'+(freezeRow+1)+'" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>':'';
+  var mergeXml=merges.length?'<mergeCells count="'+merges.length+'">'+merges.map(function(m){ return '<mergeCell ref="'+m+'"/>'; }).join('')+'</mergeCells>':'';
+  var NS='http://schemas.openxmlformats.org/spreadsheetml/2006/main';
+  var sheet='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="'+NS+'">'+viewXml+colsXml+'<sheetData>'+rowsXml+'</sheetData>'+mergeXml+'</worksheet>';
+  var styles='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="'+NS+'">'
+    +'<fonts count="3"><font><sz val="10"/><name val="Arial"/></font><font><b/><sz val="10"/><name val="Arial"/></font><font><b/><sz val="10"/><color rgb="FFFFFFFF"/><name val="Arial"/></font></fonts>'
+    +'<fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF1F3864"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFEBF3FB"/></patternFill></fill></fills>'
+    +'<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>'
+    +'<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
+    +'<cellXfs count="6">'
+    +'<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
+    +'<xf numFmtId="0" fontId="2" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="center"/></xf>'
+    +'<xf numFmtId="0" fontId="1" fillId="3" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>'
+    +'<xf numFmtId="3" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>'
+    +'<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>'
+    +'<xf numFmtId="4" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>'
+    +'</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
+  var safeName=sheetName.replace(/[\[\]\*\/\\\?:]/g,' ').slice(0,31);
+  var wb='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="'+NS+'" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="'+xmlEsc(safeName)+'" sheetId="1" r:id="rId1"/></sheets></workbook>';
+  var wbRels='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>';
+  var rels='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>';
+  var ct='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>';
+  var enc=new TextEncoder();
+  return zipStore([
+    {name:'[Content_Types].xml',data:enc.encode(ct)},
+    {name:'_rels/.rels',data:enc.encode(rels)},
+    {name:'xl/workbook.xml',data:enc.encode(wb)},
+    {name:'xl/_rels/workbook.xml.rels',data:enc.encode(wbRels)},
+    {name:'xl/styles.xml',data:enc.encode(styles)},
+    {name:'xl/worksheets/sheet1.xml',data:enc.encode(sheet)}
+  ]);
+}
+
 // ── Mode handling: editor vs viewer ────────────────────────────────────────
 function applyMode(){
   if(IS_EDITOR){
@@ -1648,7 +2087,7 @@ function applyMode(){
 // ── Publish data for the team (editor only) ─────────────────────────────────
 function publishData(){ if(!IS_EDITOR){ alert("View-only mode."); return; }
   if(!rows.length){ alert('Load stock data first.'); return; }
-  var state = {rows:rows, cPOs:cPOs, bookedPOs:bookedPOs, nextContDate:nextContDate, savedAt:new Date().toISOString()};
+  var state = {rows:rows, cPOs:cPOs, bookedPOs:bookedPOs, nextContDate:nextContDate, customerMaps:customerMaps, containerAliases:containerAliases, savedAt:new Date().toISOString()};
   var blob = new Blob([JSON.stringify(state)], {type:'application/json'});
   var a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -1662,7 +2101,7 @@ var saveTimer=null;
 function dbSave(){ clearTimeout(saveTimer); saveTimer=setTimeout(saveState,1200); }
 function saveState(){
   try{
-    var state={rows:rows,cPOs:cPOs,bookedPOs:bookedPOs,nextContDate:nextContDate,savedAt:new Date().toISOString()};
+    var state={rows:rows,cPOs:cPOs,bookedPOs:bookedPOs,nextContDate:nextContDate,customerMaps:customerMaps,containerAliases:containerAliases,savedAt:new Date().toISOString()};
     localStorage.setItem('tibard_v5',JSON.stringify(state));
     var ind=document.getElementById('saveInd');
     if(ind){ind.innerHTML='&#10003; Saved';setTimeout(function(){ind.textContent='';},2000);}
@@ -1674,7 +2113,7 @@ function loadState(){
     if(!raw) return false;
     var s=JSON.parse(raw);
     if(!s.rows||!s.rows.length) return false;
-    rows=s.rows; cPOs=s.cPOs||[]; bookedPOs=s.bookedPOs||[]; ensureUIDs(); nextContDate=s.nextContDate||null;
+    rows=s.rows; cPOs=s.cPOs||[]; bookedPOs=s.bookedPOs||[]; ensureUIDs(); nextContDate=s.nextContDate||null; customerMaps=s.customerMaps||{}; containerAliases=s.containerAliases||{};
     var sa=s.savedAt?new Date(s.savedAt).toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}):'';
     document.getElementById('lastUpdated').textContent='Last saved: '+sa;
     recalcContainers(); recalcQtys(); showData();
@@ -1685,7 +2124,7 @@ function clearAll(){
   if(!confirm('Clear all saved data?')) return;
   try{
     localStorage.removeItem('tibard_v5');
-    rows=[];cPOs=[];nextContDate=null;
+    rows=[];cPOs=[];bookedPOs=[];nextContDate=null;customerMaps={};containerAliases={};
     document.getElementById('dataWrap').classList.add('hidden');
     document.getElementById('uzone').classList.remove('hidden');
     document.getElementById('sbar').style.display='none';
@@ -1703,7 +2142,7 @@ function fetchSharedData(cb){
     return r.json();
   }).then(function(s){
     if(s && s.rows && s.rows.length){
-      rows = s.rows; ensureUIDs(); cPOs = s.cPOs || []; bookedPOs = s.bookedPOs || []; nextContDate = s.nextContDate || null;
+      rows = s.rows; ensureUIDs(); cPOs = s.cPOs || []; bookedPOs = s.bookedPOs || []; nextContDate = s.nextContDate || null; customerMaps = s.customerMaps || {}; containerAliases = s.containerAliases || {};
       var sa = s.savedAt ? new Date(s.savedAt).toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
       document.getElementById('lastUpdated').textContent = 'Published: ' + sa;
       var bd = document.getElementById('bannerDate');
@@ -1719,6 +2158,9 @@ function fetchSharedData(cb){
 // ── Event listeners ────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded',function(){
   applyMode();
+  // ?tab=reports opens straight onto the Customer reports tab (the report
+  // re-renders itself once the data has loaded)
+  if(/[?&]tab=reports\b/.test(window.location.search)) showTab('reports');
   // Editor: load their own working copy from localStorage first; fall back to shared
   // Viewer: always load the shared published data.json
   if(IS_EDITOR){
