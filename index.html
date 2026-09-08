@@ -78,6 +78,9 @@ header h1{font-size:16px;font-weight:600}
 .ptbl td:nth-child(-n+3){text-align:left}
 .ptbl tr:last-child td{border-bottom:none}
 .ptbl tr:hover td{background:#fafbfd}
+.ptbl th.psort{cursor:pointer;user-select:none}
+.ptbl th.psort:hover{color:#111827;background:#e6eaf2}
+.ptbl th .parrow{color:#9ca3af;font-size:9px}
 /* runway */
 .rwi{background:#fff;border:1px solid #dde3ed;border-radius:7px;margin-bottom:6px;overflow:hidden}
 .rwi-h{padding:8px 12px;display:flex;align-items:center;gap:8px;cursor:pointer}
@@ -360,8 +363,8 @@ body.viewer-mode .view-only{display:block !important}
           <div id="delaySummary" style="display:none;background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;padding:8px 12px;margin-bottom:8px;font-size:12px"></div>
           <div style="overflow-x:auto;border:1px solid #dde3ed;border-radius:7px">
             <table class="ptbl"><thead><tr>
-              <th style="text-align:left">SKU</th><th style="text-align:left">Description</th><th style="text-align:left">Container</th>
-              <th>Arrives</th><th>Wks away</th><th>Free stk</th><th>Used</th><th title="Units on other container POs arriving on or before this container">Earlier POs</th><th>On cont</th><th>Proj stk</th><th>Proj wks</th><th>Status</th><th title="Tick to model this line NOT arriving">Delayed?</th><th>Need next PO</th>
+              <th style="text-align:left" class="psort" id="pth-code" onclick="sortProj('code')" title="Click to sort">SKU <span class="parrow"></span></th><th style="text-align:left">Description</th><th style="text-align:left">Container</th>
+              <th>Arrives</th><th>Wks away</th><th class="psort" id="pth-free" onclick="sortProj('free')" title="Click to sort">Free stk <span class="parrow"></span></th><th>Used</th><th title="Units on other container POs arriving on or before this container">Earlier POs</th><th class="psort" id="pth-qty" onclick="sortProj('qty')" title="Click to sort">On cont <span class="parrow"></span></th><th class="psort" id="pth-proj" onclick="sortProj('proj')" title="Click to sort">Proj stk <span class="parrow"></span></th><th class="psort" id="pth-pw" onclick="sortProj('pw')" title="Click to sort">Proj wks <span class="parrow"></span></th><th>Status</th><th title="Tick to model this line NOT arriving">Delayed?</th><th class="psort" id="pth-np" onclick="sortProj('np')" title="Click to sort">Need next PO <span class="parrow"></span></th>
             </tr></thead><tbody id="projBody"></tbody></table>
           </div>
           <p class="foot">Proj stock = Free − (weekly use × weeks away) + earlier PO arrivals + container qty. Need next PO = units for 12 wks cover from arrival.<span class="edit-only"> Click &#9998; Edit quantities to change what's on this container — edits only apply when you press Save (0 removes a line).</span></p>
@@ -536,6 +539,14 @@ var selectedBookedPO = null;
 var delayedItems = {};  // key 'poRef|code' -> true when a PO line is flagged delayed (what-if)
 var poEditMode = false;      // true while the contents popup is in edit-quantities mode
 var pendingPOEdits = {};     // key 'poIdx|itIdx' -> staged qty, applied on Save
+var projSort = {col:null, asc:true};   // contents popup sort; null = container order
+function sortProj(col){
+  if(projSort.col===col){
+    if(projSort.asc) projSort.asc=false;          // 2nd click: descending
+    else projSort={col:null, asc:true};           // 3rd click: back to container order
+  } else projSort={col:col, asc:true};
+  renderProj();
+}
 var TARGET = 12, CONT_LEAD = 13, AIR_LEAD = 3, RWWKS = 20;
 var selCtName = null, selCtCap = 0, nextContDate = null;
 var selectedPO = null; // which container tile is selected to show its projection
@@ -925,6 +936,19 @@ function renderPOCards(){
     var wl=wks<1?'Arriving imminently':wks.toFixed(1)+' wks away';
     var wbg=wks<2?'#fde8e8;color:#b91c1c':wks<6?'#fef3c7;color:#92400e':'#d1fae5;color:#065f46';
     var tot=Math.round(po.items.reduce(function(s,it){return s+it.qty;},0));
+    // Cartons on the container = each line's units ÷ its carton size
+    var crt=0, unk=0;
+    po.items.forEach(function(it){
+      var r=rows.find(function(x){ return x.code===it.code; });
+      if(r && r.carton>0) crt+=it.qty/r.carton; else unk++;
+    });
+    crt=Math.round(crt*10)/10;
+    var crtH='<strong>'+fC(crt)+'</strong> cartons';
+    if(selCtCap){
+      var spare=Math.round((selCtCap-crt)*10)/10;
+      crtH+=' <span style="color:'+(spare<0?'#b91c1c':'#065f46')+';font-weight:600">('+(spare<0?'over by '+fC(-spare):fC(spare)+' spare')+' in '+esc(selCtName)+')</span>';
+    }
+    if(unk) crtH+=' <span style="color:#92400e" title="Lines whose carton size is not in the stock data">+'+unk+' unknown</span>';
     var sel=(selectedPO===po.ref)?' poc-selected':'';
     return '<div class="poc'+sel+'" onclick="selectPO(\''+esc(po.ref).replace(/'/g,"\\'")+'\')" style="cursor:pointer">'
       +'<button class="poc-del" onclick="event.stopPropagation();delPO('+i+')" title="Remove PO">&#10005;</button>'
@@ -933,6 +957,7 @@ function renderPOCards(){
       +'<div class="poc-date" id="poc-date-'+i+'">Arrives: '+fmtD(po.date)+'</div>'
       +'<span class="poc-wks" style="background:'+wbg+'">'+wl+'</span>'
       +'<div style="font-size:11px;color:#4b5563"><strong>'+po.items.length+'</strong> SKUs | <strong>'+tot.toLocaleString()+'</strong> units</div>'
+      +'<div style="font-size:11px;color:#4b5563;margin-top:2px">&#128682; '+crtH+'</div>'
       +'<div style="font-size:10px;color:#1F3864;margin-top:4px;font-weight:600">'+((selectedPO===po.ref)?'&#9650; Hide details':'&#9660; Click to view contents')+'</div>'
       +'<button class="btn edit-only" style="font-size:10px;padding:4px 8px;margin-top:6px;width:100%;color:#065f46;border-color:#a7d4bb" onclick="event.stopPropagation();bookInPO('+i+')">&#10003; Mark as booked in</button>'
       +'</div>';
@@ -1108,7 +1133,7 @@ function renderProj(){
       needAtArr=Math.max(needAtArr, (TARGET*r.weeklyUsage)-landedAfter);
       var np=r.weeklyUsage>0?Math.max(0,Math.ceil(needAtArr-proj)):0;
       if(short&&pw>=TARGET) return;
-      prows.push({po:po.ref,date:po.date,wks,code:r.code,desc:r.desc,free:r.free,used,earlier,qty:it.qty,delayed:isDelayed,proj,pw,np,ctn:r.carton,wu:r.weeklyUsage,poIdx,itIdx});
+      prows.push({po:po.ref,date:po.date,wks,code:r.code,desc:r.desc,flag:r.flag,free:r.free,used,earlier,qty:it.qty,delayed:isDelayed,proj,pw,np,ctn:r.carton,wu:r.weeklyUsage,poIdx,itIdx});
     });
   });
   // Build a delay-impact summary (only for the delayed lines on the selected container)
@@ -1129,6 +1154,21 @@ function renderProj(){
         +'</div>';
     } else { delSummary.style.display='none'; delSummary.innerHTML=''; }
   }
+  // Optional sort (default is the order the lines were pasted in)
+  if(projSort.col){
+    var sc=projSort.col, dir=projSort.asc?1:-1;
+    prows.sort(function(a,b){
+      var av=a[sc], bv=b[sc];
+      if(typeof av==='string') return dir*av.localeCompare(bv);
+      return dir*((av||0)-(bv||0));
+    });
+  }
+  ['code','free','qty','proj','pw','np'].forEach(function(c){
+    var th=document.getElementById('pth-'+c);
+    if(!th) return;
+    var ar=th.querySelector('.parrow');
+    if(ar) ar.innerHTML=(projSort.col===c)?(projSort.asc?'&#9650;':'&#9660;'):'&#8597;';
+  });
   var tb=document.getElementById('projBody');
   if(!prows.length){ tb.innerHTML='<tr><td colspan="14" style="text-align:center;padding:1rem;color:#6b7280">No issues — all items project 12+ wks on arrival</td></tr>'; return; }
   tb.innerHTML=prows.map(function(p){
@@ -1159,7 +1199,8 @@ function renderProj(){
       : '<td style="color:#6d28d9;font-weight:600">'+qtyDisp+'</td>';
     var delToggle='<td style="text-align:center"><label style="cursor:pointer;display:inline-flex;align-items:center;gap:3px;font-size:10px;color:'+(p.delayed?'#b91c1c':'#6b7280')+';font-weight:'+(p.delayed?'700':'400')+'"><input type="checkbox" '+(p.delayed?'checked':'')+' style="cursor:pointer;accent-color:#b91c1c" onchange="toggleDelayed(\''+esc(p.po).replace(/\'/g,"\\'")+'\',\''+esc(p.code).replace(/\'/g,"\\'")+'\',this.checked)">'+(p.delayed?'Delayed':'')+'</label></td>';
     return '<tr'+(p.delayed?' style="background:#fef2f2"':'')+'>'
-      +'<td style="font-family:monospace;font-size:10px">'+esc(p.code)+'</td>'
+      +'<td style="font-family:monospace;font-size:10px;white-space:nowrap">'+esc(p.code)
+        +(p.flag==='req'?' <span class="badge bp" title="On request item — not included in automatic ordering">REQ</span>':p.flag==='obs'?' <span class="badge bgr" title="Obsolete item">OBS</span>':'')+'</td>'
       +'<td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(p.desc)+'">'+esc(p.desc)+'</td>'
       +'<td><span class="badge bb">'+esc(p.po)+'</span></td>'
       +'<td>'+fmtD(p.date)+'</td>'
@@ -1342,7 +1383,7 @@ function st(l,v,c){ return '<div class="stat"><div class="stat-lbl">'+l+'</div><
 function selCt(name,cap){
   ['ct20','ct40','ct40hc'].forEach(function(id){document.getElementById(id).classList.remove('sel');});
   document.getElementById({'20ft':'ct20','40ft':'ct40','40ft HC':'ct40hc'}[name]).classList.add('sel');
-  selCtName=name; selCtCap=cap; updateCapSum();
+  selCtName=name; selCtCap=cap; updateCapSum(); renderPOCards();   // cards show spare space against the chosen size
 }
 function updateCapSum(){
   if(!selCtCap) return;
