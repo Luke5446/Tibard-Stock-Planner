@@ -936,6 +936,19 @@ function renderPOCards(){
     var wl=wks<1?'Arriving imminently':wks.toFixed(1)+' wks away';
     var wbg=wks<2?'#fde8e8;color:#b91c1c':wks<6?'#fef3c7;color:#92400e':'#d1fae5;color:#065f46';
     var tot=Math.round(po.items.reduce(function(s,it){return s+it.qty;},0));
+    // Cartons on the container = each line's units ÷ its carton size
+    var crt=0, unk=0;
+    po.items.forEach(function(it){
+      var r=rows.find(function(x){ return x.code===it.code; });
+      if(r && r.carton>0) crt+=it.qty/r.carton; else unk++;
+    });
+    crt=Math.round(crt*10)/10;
+    var crtH='<strong>'+fC(crt)+'</strong> cartons';
+    if(selCtCap){
+      var spare=Math.round((selCtCap-crt)*10)/10;
+      crtH+=' <span style="color:'+(spare<0?'#b91c1c':'#065f46')+';font-weight:600">('+(spare<0?'over by '+fC(-spare):fC(spare)+' spare')+' in '+esc(selCtName)+')</span>';
+    }
+    if(unk) crtH+=' <span style="color:#92400e" title="Lines whose carton size is not in the stock data">+'+unk+' unknown</span>';
     var sel=(selectedPO===po.ref)?' poc-selected':'';
     return '<div class="poc'+sel+'" onclick="selectPO(\''+esc(po.ref).replace(/'/g,"\\'")+'\')" style="cursor:pointer">'
       +'<button class="poc-del" onclick="event.stopPropagation();delPO('+i+')" title="Remove PO">&#10005;</button>'
@@ -944,6 +957,7 @@ function renderPOCards(){
       +'<div class="poc-date" id="poc-date-'+i+'">Arrives: '+fmtD(po.date)+'</div>'
       +'<span class="poc-wks" style="background:'+wbg+'">'+wl+'</span>'
       +'<div style="font-size:11px;color:#4b5563"><strong>'+po.items.length+'</strong> SKUs | <strong>'+tot.toLocaleString()+'</strong> units</div>'
+      +'<div style="font-size:11px;color:#4b5563;margin-top:2px">&#128682; '+crtH+'</div>'
       +'<div style="font-size:10px;color:#1F3864;margin-top:4px;font-weight:600">'+((selectedPO===po.ref)?'&#9650; Hide details':'&#9660; Click to view contents')+'</div>'
       +'<button class="btn edit-only" style="font-size:10px;padding:4px 8px;margin-top:6px;width:100%;color:#065f46;border-color:#a7d4bb" onclick="event.stopPropagation();bookInPO('+i+')">&#10003; Mark as booked in</button>'
       +'</div>';
@@ -1369,7 +1383,7 @@ function st(l,v,c){ return '<div class="stat"><div class="stat-lbl">'+l+'</div><
 function selCt(name,cap){
   ['ct20','ct40','ct40hc'].forEach(function(id){document.getElementById(id).classList.remove('sel');});
   document.getElementById({'20ft':'ct20','40ft':'ct40','40ft HC':'ct40hc'}[name]).classList.add('sel');
-  selCtName=name; selCtCap=cap; updateCapSum();
+  selCtName=name; selCtCap=cap; updateCapSum(); renderPOCards();   // cards show spare space against the chosen size
 }
 function updateCapSum(){
   if(!selCtCap) return;
