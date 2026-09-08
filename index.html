@@ -286,8 +286,9 @@ body.viewer-mode .view-only{display:block !important}
   <!-- Stock paste panel -->
   <div id="pastePanel" class="pbox hidden">
     <h3>&#9998; Paste stock data</h3>
-    <p>Select <code>A9:R234</code> in Stock 2026 tab &rarr; Ctrl+C &rarr; click below &rarr; Ctrl+V<br>
-    Cols: <code>A</code>=Code &nbsp;<code>E</code>=Desc &nbsp;<code>F</code>=Carton &nbsp;<code>H</code>=6mth Sales &nbsp;<code>L</code>=On PO &nbsp;<code>P</code>=Free Stock &nbsp;<code>Q</code>=Flag(OBS/REQ) &nbsp;<code>R</code>=On SOP</p>
+    <p>Select <code>A2:O[last row]</code> in the Stock 2026 tab &rarr; Ctrl+C &rarr; click below &rarr; Ctrl+V<br>
+    Cols: <code>A</code>=Code &nbsp;<code>C</code>=Desc &nbsp;<code>D</code>=Carton &nbsp;<code>F</code>=6mth Sales &nbsp;<code>H</code>=Bulk stock &nbsp;<code>I</code>=Home stock &nbsp;<code>J</code>=On POP &nbsp;<code>L</code>=Flag(OBS/REQ) &nbsp;<code>M</code>=On SOP<br>
+    Free stock is worked out as <strong>Bulk + Home &minus; On SOP</strong>; the sheet's own Free Stock column (K) is ignored because it can include On POP.</p>
     <textarea id="pasteTA" placeholder="Click here then Ctrl+V..."></textarea>
     <div style="display:flex;gap:6px">
       <button class="btn btn-p" id="loadBtn" onclick="loadPaste()">&#10003; Load data</button>
@@ -298,7 +299,7 @@ body.viewer-mode .view-only{display:block !important}
   <div id="uzone" class="uzone">
     <h2 class="edit-only">&#128196; Ready to load stock data</h2>
     <p class="edit-only">Click <strong>Paste stock data from Sage</strong> above</p>
-    <small class="edit-only">Select A9:M[last row] &rarr; Ctrl+C &rarr; Paste &nbsp;|&nbsp; Col L=Flag(OBS/REQ) &nbsp;Col M=On SOP</small>
+    <small class="edit-only">Select A2:O[last row] &rarr; Ctrl+C &rarr; Paste &nbsp;|&nbsp; Free stock = Bulk (H) + Home (I) &minus; On SOP (M) &nbsp;|&nbsp; Col L=Flag(OBS/REQ)</small>
     <h2 class="view-only" style="display:none">&#9203; Waiting for data</h2>
     <p class="view-only" style="display:none">No stock data has been published by the planning team yet. Please check back shortly.</p>
   </div>
@@ -603,23 +604,36 @@ function loadPaste(){
     if(cols.length < 3) continue;
     var code = (cols[0]||'').trim();
     if(!code || code.toLowerCase()==='code' || code.toLowerCase()==='stock code') continue;
-    // Column positions (verified from real data):
-    // [0]=Code(A) [1]=Desc(E) [2]=Carton(F) [3]=12mthSales(G) [4]=6mthSales(H)
-    // [5]=3mth [6]=1mth [7]=OnSOP(K) [8]=OnPO(L) [9]=FreeStock(P) [10]=Flag(Q) [11]=OnSOP(R)
+    // Column B of the sheet is the "Bulk" code (Bulk + stock code). It is usually
+    // hidden and so missing from the paste; drop it when it is present so the
+    // positions below hold either way.
+    if((cols[1]||'').trim().toLowerCase()==='bulk'+code.toLowerCase()) cols.splice(1,1);
+    // Positions (Stock 2026 tab with column B removed):
+    // [0]=A Code [1]=C Desc [2]=D Carton [3]=E 12M sales [4]=F 6M sales [5]=G 3M sales
+    // [6]=H Bulk stock [7]=I Home stock [8]=J On POP [9]=K Free stock (sheet)
+    // [10]=L Flag OBS/REQ [11]=M On SOP
     var flagRaw = (cols[10]||'').trim().toUpperCase();
     var flag = flagRaw==='OBS'?'obs': flagRaw==='REQ'?'req': '';
+    var bulk = pn(cols[6]), home = pn(cols[7]), onSOP = pn(cols[11]), onPO = pn(cols[8]);
+    // Real free stock = physical stock (bulk + home) minus sales orders. The sheet's
+    // own Free Stock column (K) sometimes adds On POP, which would double count
+    // stock the tracker already carries on container POs, so it is only used as a
+    // fallback when the bulk/home columns are missing from the paste.
+    var free = (cols.length >= 8) ? (bulk + home - onSOP) : pn(cols[9]);
     built.push(mkRow(
       code,
       (cols[1]||'').trim(),
       pn(cols[2])||1,
-      pn(cols[4]),   // 6-month sales = col H = index 4
-      pn(cols[11]),  // On SOP from col R = index 11
-      pn(cols[8]),   // On PO from col L = index 8
-      pn(cols[9]),   // Free stock from col P = index 9
-      flag
+      pn(cols[4]),   // 6-month sales (col F)
+      onSOP,
+      onPO,
+      free,
+      flag,
+      bulk,
+      home
     ));
   }
-  if(!built.length){ alert('No valid rows found.\n\nSelect A9:R234 in your Excel, Ctrl+C, then paste here.'); return; }
+  if(!built.length){ alert('No valid rows found.\n\nSelect A2:O[last row] in the Stock 2026 tab, Ctrl+C, then paste here.'); return; }
   rows = built;
   // Warn if the pasted data contains duplicate stock codes (they still work correctly now,
   // but a duplicate usually means a data slip worth checking).
@@ -637,14 +651,15 @@ function loadPaste(){
   }
 }
 
-function mkRow(code,desc,carton,sales6m,onSOP,onPO,free,flag){
+function mkRow(code,desc,carton,sales6m,onSOP,onPO,free,flag,bulk,home){
   var ctn = Math.max(carton,1);
   var wkly = sales6m/26;
   var wks = wkly>0 ? (free/wkly) : 999;
   var status = flag==='obs'?'obsolete': flag==='req'?'request':
     wkly===0?'healthy': wks<=4?'critical': wks<=8?'low': wks<=12?'ok': wks>25?'overstock': 'healthy';
   return { _uid:('r'+(_uidSeq++)), code, desc, carton:ctn, sales6m, weeklyUsage:wkly, weeksOfCover:wks,
-    onPO, onSOP, free, included:flag==='', status, flag, onContainer:0,
+    onPO, onSOP, free, bulk:(bulk===undefined?null:bulk), home:(home===undefined?null:home),
+    included:flag==='', status, flag, onContainer:0,
     airFreightQty:0, actAir:0, airManAdj:false, containerOrderQty:0, adjCartons:0, actCartons:0, manAdj:false };
 }
 
@@ -1273,7 +1288,9 @@ function openRWModal(uid){
   document.getElementById('rwTitle').textContent=r.code+' — Weekly Runway';
   document.getElementById('rwMeta').innerHTML=
     '<span>'+esc(r.desc)+'</span>'
-    +'<span>Free: <strong>'+r.free.toLocaleString()+'</strong></span>'
+    +'<span>Free: <strong>'+r.free.toLocaleString()+'</strong>'
+      +((r.bulk!==null&&r.bulk!==undefined)?' <span style="color:#6b7280;font-size:11px">(bulk '+r.bulk.toLocaleString()+' + home '+(r.home||0).toLocaleString()+' &minus; SOP '+r.onSOP.toLocaleString()+')</span>':'')
+      +'</span>'
     +'<span>Wkly use: <strong>'+r.weeklyUsage.toFixed(1)+'</strong></span>'
     +'<span>Curr: <strong>'+(r.weeksOfCover>=99?'99+':r.weeksOfCover.toFixed(1))+' wks</strong></span>'
     +(r.airFreightQty>0?'<span style="color:#c2410c;font-weight:600">&#9992; Air: '+r.airFreightQty.toLocaleString()+' units</span>':'')
