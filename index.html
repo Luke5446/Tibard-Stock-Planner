@@ -599,15 +599,28 @@ function loadPaste(){
   var txt = document.getElementById('pasteTA').value.trim();
   if(!txt){ alert('Nothing pasted — click in the box then Ctrl+V.'); return; }
   var lines = txt.split('\n'), built = [];
+  // Column B of the sheet is the "Bulk" code (Bulk + stock code). It is usually
+  // hidden and so missing from the paste. Decide ONCE for the whole paste whether
+  // it is present — the header names it, or most data rows carry a "Bulk…" value
+  // in their second cell — so a blank or oddly formatted B cell can't shift a
+  // single row's columns.
+  var withB=0, dataRows=0, hdrB=false;
+  for(var h=0; h<lines.length; h++){
+    var hc=lines[h].trim().split('\t');
+    if(hc.length<3) continue;
+    var hcode=(hc[0]||'').trim().toLowerCase();
+    if(!hcode) continue;
+    if(hcode==='code'||hcode==='stock code'){ if(/^bulk/i.test((hc[1]||'').trim())) hdrB=true; continue; }
+    dataRows++;
+    if(/^bulk/i.test((hc[1]||'').trim())) withB++;
+  }
+  var hasBulkCol = hdrB || (dataRows>0 && withB > dataRows/2);
   for(var i=0; i<lines.length; i++){
     var cols = lines[i].trim().split('\t');
     if(cols.length < 3) continue;
     var code = (cols[0]||'').trim();
     if(!code || code.toLowerCase()==='code' || code.toLowerCase()==='stock code') continue;
-    // Column B of the sheet is the "Bulk" code (Bulk + stock code). It is usually
-    // hidden and so missing from the paste; drop it when it is present so the
-    // positions below hold either way.
-    if((cols[1]||'').trim().toLowerCase()==='bulk'+code.toLowerCase()) cols.splice(1,1);
+    if(hasBulkCol) cols.splice(1,1);
     // Positions (Stock 2026 tab with column B removed):
     // [0]=A Code [1]=C Desc [2]=D Carton [3]=E 12M sales [4]=F 6M sales [5]=G 3M sales
     // [6]=H Bulk stock [7]=I Home stock [8]=J On POP [9]=K Free stock (sheet)
@@ -617,9 +630,10 @@ function loadPaste(){
     var bulk = pn(cols[6]), home = pn(cols[7]), onSOP = pn(cols[11]), onPO = pn(cols[8]);
     // Real free stock = physical stock (bulk + home) minus sales orders. The sheet's
     // own Free Stock column (K) sometimes adds On POP, which would double count
-    // stock the tracker already carries on container POs, so it is only used as a
-    // fallback when the bulk/home columns are missing from the paste.
-    var free = (cols.length >= 8) ? (bulk + home - onSOP) : pn(cols[9]);
+    // stock the tracker already carries on container POs, so K is never used.
+    // Excel drops trailing blank cells when pasting, so any missing cell simply
+    // counts as zero (pn() returns 0 for an absent value).
+    var free = bulk + home - onSOP;
     built.push(mkRow(
       code,
       (cols[1]||'').trim(),
@@ -1978,7 +1992,7 @@ function renderReport(){
   }).join('');
   tbl.innerHTML='<thead>'+h1+h2+'</thead><tbody>'+(body||'<tr><td colspan="'+cols.length+'" style="padding:1rem;color:#6b7280">No '+esc(model.cust.prefix)+' products found.</td></tr>')+'</tbody>';
   var foot=document.getElementById('rptFoot');
-  if(foot) foot.innerHTML='Cases = units &divide; units per case, rounded. Weeks of stock = stock today &divide; sales per week. Stock end month = previous stock &minus; forecast + container arrivals in that month. Open orders are not deducted from stock. Negative figures show where stock would run out before the next container.';
+  if(foot) foot.innerHTML='Cases = units &divide; units per case, rounded. Weeks of stock = stock today &divide; sales per week. Stock end month = previous stock &minus; forecast + container arrivals in that month. In stock is already net of open orders (bulk + home &minus; On SOP), so the forecast does not deduct them again. Negative figures show where stock would run out before the next container.';
   renderReportMap(model);
 }
 
