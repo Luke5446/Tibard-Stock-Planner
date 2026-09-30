@@ -2172,22 +2172,66 @@ function publishData(){ if(!IS_EDITOR){ alert("View-only mode."); return; }
   alert('data.json downloaded.\n\nNow upload it to your GitHub repo (replacing the old data.json) and commit. The team will see the update within a minute.');
 }
 
-// ── Storage (browser localStorage — works on any web server) ────────────────
+// ── Storage (browser localStorage and IndexedDB) ─────────────────────────────
+// localStorage is capped (about 5 MB) for the whole luke5446.github.io site,
+// which the production planner and the costing app share. Once the apps' data
+// together passed the cap every save here was refused and the catch logged it
+// to the console and nothing else. So the state goes to IndexedDB as well,
+// which has no such cap: both are written on every save, the newer of the two
+// is taken on load, and a save that reaches neither is said out loud.
+var IDB_NAME='tibard_stock', IDB_STORE='state';
+function idbOpen(cb){
+  try{
+    if(!window.indexedDB){ cb(null); return; }
+    var req=indexedDB.open(IDB_NAME, 1);
+    req.onupgradeneeded=function(){ req.result.createObjectStore(IDB_STORE); };
+    req.onsuccess=function(){ cb(req.result); };
+    req.onerror=function(){ cb(null); }; req.onblocked=function(){ cb(null); };
+  }catch(e){ cb(null); }
+}
+function idbSet(json, cb){
+  idbOpen(function(db){ if(!db){ cb(false); return; }
+    try{ var tx=db.transaction(IDB_STORE,'readwrite'); tx.objectStore(IDB_STORE).put(json,'state');
+         tx.oncomplete=function(){ cb(true); }; tx.onerror=function(){ cb(false); }; tx.onabort=function(){ cb(false); }; }
+    catch(e){ cb(false); } });
+}
+function idbGet(cb){
+  idbOpen(function(db){ if(!db){ cb(null); return; }
+    try{ var req=db.transaction(IDB_STORE,'readonly').objectStore(IDB_STORE).get('state');
+         req.onsuccess=function(){ cb(req.result||null); }; req.onerror=function(){ cb(null); }; }
+    catch(e){ cb(null); } });
+}
+var saveFailedTold=false;
+function saveFailed(where){
+  var ind=document.getElementById('saveInd'); if(ind){ ind.innerHTML='<span style="color:#dc2626;font-weight:700">&#9888; NOT SAVED</span>'; }
+  if(!saveFailedTold){ saveFailedTold=true;
+    alert('This change could not be saved in the browser ('+where+').\n\nThe browser\'s storage for this site is full or blocked, so what you do here will be lost when the tab closes. Publish now to keep it, then tell Luke.'); }
+}
 var saveTimer=null;
 function dbSave(){ clearTimeout(saveTimer); saveTimer=setTimeout(saveState,1200); }
 function saveState(){
+  var json='';
   try{
-    var state={rows:rows,cPOs:cPOs,bookedPOs:bookedPOs,nextContDate:nextContDate,customerMaps:customerMaps,containerAliases:containerAliases,savedAt:new Date().toISOString()};
-    localStorage.setItem('tibard_v5',JSON.stringify(state));
-    var ind=document.getElementById('saveInd');
-    if(ind){ind.innerHTML='&#10003; Saved';setTimeout(function(){ind.textContent='';},2000);}
-  }catch(e){console.log('Save failed:',e);}
+    json=JSON.stringify({rows:rows,cPOs:cPOs,bookedPOs:bookedPOs,nextContDate:nextContDate,customerMaps:customerMaps,containerAliases:containerAliases,savedAt:new Date().toISOString()});
+  }catch(e){ console.log('Save failed:',e); saveFailed('could not serialise'); return; }
+  var localOK=false;
+  try{ localStorage.setItem('tibard_v5',json); localOK=true; }catch(e){ console.log('localStorage save failed:',e); }
+  idbSet(json, function(ok){
+    if(ok || localOK){ var ind=document.getElementById('saveInd'); if(ind){ ind.innerHTML='&#10003; Saved'+(localOK?'':' (browser storage nearly full)'); setTimeout(function(){ ind.textContent=''; },2000); } }
+    else saveFailed('localStorage and IndexedDB both refused');
+  });
 }
+var stateLoadedAt='';
 function loadState(){
   try{
     var raw=localStorage.getItem('tibard_v5');
     if(!raw) return false;
-    var s=JSON.parse(raw);
+    return applyState(JSON.parse(raw));
+  }catch(e){console.log('Load failed:',e);return false;}
+}
+function applyState(s){
+  try{
+    stateLoadedAt=s.savedAt||'';
     if(!s.rows||!s.rows.length) return false;
     rows=s.rows; cPOs=s.cPOs||[]; bookedPOs=s.bookedPOs||[]; ensureUIDs(); nextContDate=s.nextContDate||null; customerMaps=s.customerMaps||{}; containerAliases=s.containerAliases||{};
     var sa=s.savedAt?new Date(s.savedAt).toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}):'';
@@ -2196,10 +2240,28 @@ function loadState(){
     return true;
   }catch(e){console.log('Load failed:',e);return false;}
 }
+// The editor's start: localStorage first (it is synchronous), then IndexedDB;
+// whichever was saved later wins, because a save that localStorage refused
+// still reached IndexedDB. An IndexedDB copy one save behind (its write is
+// asynchronous, and a tab closed the instant after a save aborts it) never
+// undoes what localStorage kept. Nothing in either: the published file.
+function loadEditor(){
+  var hadLocal=false; try{ hadLocal=!!localStorage.getItem('tibard_v5'); }catch(e){}
+  var haveRows=loadState(), localAt=stateLoadedAt;
+  idbGet(function(json){
+    var s=null; try{ s=json?JSON.parse(json):null; }catch(e){ s=null; }
+    if(s && (!hadLocal || (s.savedAt||'')>(localAt||''))){
+      haveRows=applyState(s);
+      try{ localStorage.setItem('tibard_v5', json); }catch(e){}
+    }
+    if(!haveRows) fetchSharedData();
+  });
+}
 function clearAll(){
   if(!confirm('Clear all saved data?')) return;
   try{
     localStorage.removeItem('tibard_v5');
+    try{ idbOpen(function(db){ if(!db) return; try{ db.transaction(IDB_STORE,'readwrite').objectStore(IDB_STORE).delete('state'); }catch(e){} }); }catch(e){}
     rows=[];cPOs=[];bookedPOs=[];nextContDate=null;customerMaps={};containerAliases={};
     document.getElementById('dataWrap').classList.add('hidden');
     document.getElementById('uzone').classList.remove('hidden');
@@ -2240,7 +2302,7 @@ document.addEventListener('DOMContentLoaded',function(){
   // Editor: load their own working copy from localStorage first; fall back to shared
   // Viewer: always load the shared published data.json
   if(IS_EDITOR){
-    if(!loadState()) fetchSharedData();
+    loadEditor();
   } else {
     fetchSharedData(function(ok){
       // If no data.json exists yet, viewer just sees the empty prompt
