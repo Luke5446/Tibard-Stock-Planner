@@ -270,7 +270,7 @@ body.viewer-mode .view-only{display:block !important}
 <div class="toolbar">
   <button class="btn btn-p edit-only" id="pasteBtn" onclick="togglePaste()">&#9998; Paste stock data from Sage</button>
   <span id="skuCount" style="font-size:13px;font-weight:700;color:#1F3864;padding:0 4px"></span>
-  <div style="margin-left:auto;font-size:11px;color:#4b5563">Target cover: <strong>12 wks</strong> &nbsp;|&nbsp; Air lead: <strong>2 wks</strong> &nbsp;|&nbsp; Container lead: <strong>13 wks</strong></div>
+  <div style="margin-left:auto;font-size:11px;color:#4b5563">Target cover: <strong>12 wks</strong> &nbsp;|&nbsp; Air lead: <strong>2 wks</strong> &nbsp;|&nbsp; Container lead: <strong>13 wks</strong> &nbsp;|&nbsp; <span id="prodPlanInfo"></span></div>
 </div>
 
 <div class="sbar" id="sbar">
@@ -385,6 +385,18 @@ body.viewer-mode .view-only{display:block !important}
       </div>
     </div>
 
+    <!-- Made in house (live works orders from the production planner) -->
+    <div class="panel">
+      <div class="ph" onclick="togglePB('whPB')"><h2>&#128296; Made in house <span id="whSub" style="font-size:11px;opacity:.75"></span></h2><span class="sub">Live works orders from the production planner &nbsp;|&nbsp; Click to expand</span></div>
+      <div class="pb" id="whPB">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:9px;flex-wrap:wrap">
+          <span style="font-size:11px;color:#4b5563">Read from the production planner's published data each time this page loads. Units on a live works order count as arriving on its due date, so they are not ordered again on a container.</span>
+          <button class="btn" style="font-size:11px;padding:3px 9px;margin-left:auto" onclick="fetchProductionPlan()">&#8635; Refresh</button>
+        </div>
+        <div id="whList"></div>
+      </div>
+    </div>
+
     <!-- Weekly Runway -->
     <div class="panel">
       <div class="ph" onclick="togglePB('rwPB')"><h2>&#128200; Weekly Stock Runway</h2><span class="sub">Click any table row for popup &nbsp;|&nbsp; Expand for all active items</span></div>
@@ -418,6 +430,7 @@ body.viewer-mode .view-only{display:block !important}
         <option value="cont">Needs container order</option>
         <option value="onsop">Has On SOP</option>
         <option value="oncont">On a container PO</option>
+        <option value="onwop">Being made in house</option>
       </select>
       <button class="btn" onclick="clearFilt()" style="font-size:11px;padding:4px 9px">&#10005; Clear filters</button>
       <button class="btn edit-only" onclick="resetView()" style="font-size:11px;padding:4px 9px">&#8635; Reset view</button>
@@ -438,6 +451,7 @@ body.viewer-mode .view-only{display:block !important}
           <th onclick="sBy('weeksOfCover')" style="width:105px">Curr wks &#8597;</th>
           <th onclick="sBy('onSOP')" style="width:48px;text-align:right">On SOP &#8597;</th>
           <th onclick="sBy('onContainer')" style="width:52px;text-align:right">On cont &#8597;</th>
+          <th onclick="sBy('onWOP')" style="width:56px;text-align:right;color:#0f766e" title="Units on live works orders in the production planner">In house &#8597;</th>
           <th class="ns" style="width:80px">Status</th>
           <th onclick="sBy('actAir')" style="width:120px;text-align:center;color:#c2410c">&#9992; Air qty &#8597;</th>
           <th onclick="sBy('containerOrderQty')" style="width:70px;text-align:right;color:#1e40af">&#128682; Cont qty &#8597;</th>
@@ -453,6 +467,7 @@ body.viewer-mode .view-only{display:block !important}
       &#9992; <strong style="color:#c2410c">Air qty</strong> = units to prevent stock running out, with 3 weeks cover (3 wk air lead time).
       &#128682; <strong style="color:#1e40af">Cont qty</strong> = units so the next container (13 wk lead) gives 12 wks cover on arrival, counting stock already on order on other containers.
       <strong>Rec crt</strong> = recommended cartons (calculated). <strong>Actual cartons</strong> = your adjusted figure used in export.
+      <strong style="color:#0f766e">In house</strong> = units on live works orders in the production planner; they count as arriving on the works order's due date, so they are not ordered again.
       Click any row for runway popup.
     </p>
 
@@ -682,7 +697,7 @@ function showData(){
   document.getElementById('dataWrap').classList.remove('hidden');
   initSbar();
   document.getElementById('lastUpdated').textContent = 'Loaded: '+now().toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
-  updateStats(); renderTable(); renderPOCards(); renderProj(); renderRW(); updateCapSum(); renderBookedPOs(); renderReport();
+  updateStats(); renderTable(); renderPOCards(); renderProj(); renderRW(); updateCapSum(); renderBookedPOs(); renderInHouse(); renderProdPlanInfo(); renderReport();
 }
 
 // ── Order qty calculations ─────────────────────────────────────────────────
@@ -692,7 +707,7 @@ function projStockOnETA(r){
   // Sums every line of a PO in case the same SKU was pasted twice.
   var wksToCont = wksUntil(d2s(getNextDate()));
   var s = r.free - (r.weeklyUsage * wksToCont);
-  cPOs.forEach(function(po){
+  allPOs().forEach(function(po){
     if(wksUntil(po.date) > wksToCont) return;
     po.items.forEach(function(i){ if(i.code===r.code) s += i.qty; });
   });
@@ -709,7 +724,7 @@ function wksCoverOnETA(r, actUnits){
   if(r.weeklyUsage<=0) return 999;
   var wksToCont = wksUntil(d2s(getNextDate()));
   var later = [];
-  cPOs.forEach(function(po){
+  allPOs().forEach(function(po){
     var w = wksUntil(po.date);
     if(w <= wksToCont) return;
     var q = 0;
@@ -732,10 +747,10 @@ function calcQtys(r){
   if(r.flag!=='' || r.weeklyUsage<=0) return {air:0, cont:0};
   var wksToCont = wksUntil(d2s(getNextDate()));
 
-  // Build existing container POs for this SKU (summing every matching line,
-  // in case the same SKU was pasted twice on one PO)
+  // Build existing container POs and in-house works orders for this SKU
+  // (summing every matching line, in case the same SKU was pasted twice)
   var rPOs = [];
-  cPOs.forEach(function(po){
+  allPOs().forEach(function(po){
     var q = 0;
     po.items.forEach(function(i){ if(i.code===r.code) q += i.qty; });
     if(q>0) rPOs.push({wks:wksUntil(po.date), qty:q});
@@ -745,7 +760,11 @@ function calcQtys(r){
   // ── Air freight: simulate week by week to find minimum stock ──────────────
   // This catches gaps where containers are on order but arrive too late
   var horizon = Math.max(TARGET, Math.ceil(wksToCont)+1);
-  var stock = r.free, minStock = r.free;
+  var stock = r.free;
+  // Anything landing this week (incl. a works order already past its due
+  // date, which wksUntil clamps to 0) is in hand before the walk starts.
+  rPOs.forEach(function(p){ if(Math.round(p.wks)===0) stock+=p.qty; });
+  var minStock = stock;
   for(var w=1; w<=horizon; w++){
     rPOs.forEach(function(p){ if(Math.round(p.wks)===w) stock+=p.qty; });
     stock -= r.weeklyUsage;
@@ -801,6 +820,109 @@ function recalcContainers(){
       if(r) r.onContainer += it.qty;
     });
   });
+  recalcInHouse();
+}
+
+// ── In-house production (live works orders from the production planner) ────
+// The production planner publishes its own data.json on the same GitHub Pages
+// site. Its live works orders are read on every page load (so a publish by the
+// production team shows up on the next refresh) and treated like incoming
+// stock due on the works order's due date, so what is being made in house is
+// not ordered again on a container. Nothing here is saved or published: the
+// production planner stays the source of truth.
+var PROD_PLAN_URL='https://luke5446.github.io/Tibard-Productionplan/data.json';
+var whPOs=[];                                  // works orders as pseudo-POs: {ref, date (due), items, inHouse:true, late}
+var prodPlanInfo={state:'loading'};
+function allPOs(){ return cPOs.concat(whPOs); }
+// What came from the production planner is rebuilt on every load, so it is
+// never written into the planner's own saved or published data.
+var IN_HOUSE_FIELDS={onWOP:1, wopLate:1, wopRefs:1};
+function stripInHouse(k,v){ return IN_HOUSE_FIELDS[k]?undefined:v; }
+
+function fetchProductionPlan(cb){
+  prodPlanInfo={state:'loading'}; renderProdPlanInfo();
+  var sep=PROD_PLAN_URL.indexOf('?')>=0?'&':'?';
+  fetch(PROD_PLAN_URL+sep+'t='+Date.now(), {cache:'no-store'}).then(function(r){
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    return r.json();
+  }).then(function(p){
+    var today=d2s(now());
+    whPOs=((p&&p.WOs)||[]).filter(function(wo){ return wo && wo.due && wo.items && wo.items.length; }).map(function(wo){
+      return {ref:String(wo.ref||''), date:wo.due, inHouse:true, late:(wo.due<today),
+        items:wo.items.filter(function(i){ return i && i.code && i.qty>0; }).map(function(i){ return {code:i.code, qty:i.qty}; })};
+    }).filter(function(po){ return po.items.length; });
+    prodPlanInfo={state:'ok', savedAt:(p&&p.savedAt)||null};
+    applyInHouse(); if(cb) cb(true);
+  }).catch(function(e){
+    whPOs=[]; prodPlanInfo={state:'error', error:String((e&&e.message)||e)};
+    applyInHouse(); if(cb) cb(false);
+  });
+}
+function applyInHouse(){
+  renderProdPlanInfo();
+  if(!rows.length) return;
+  recalcInHouse(); recalcQtys();
+  updateStats(); renderTable(); renderProj(); renderRW(); updateCapSum(); renderInHouse(); renderReport();
+}
+function recalcInHouse(){
+  rows.forEach(function(r){ r.onWOP=0; r.wopLate=false; r.wopRefs=[]; });
+  whPOs.forEach(function(po){
+    po.items.forEach(function(it){
+      var r=rows.find(function(x){ return x.code===it.code; });
+      if(!r) return;
+      r.onWOP+=it.qty;
+      if(po.late) r.wopLate=true;
+      r.wopRefs.push(po.ref+': '+Math.round(it.qty).toLocaleString()+' due '+fmtD(po.date)+(po.late?' (late)':''));
+    });
+  });
+}
+function renderProdPlanInfo(){
+  var el=document.getElementById('prodPlanInfo');
+  if(!el) return;
+  if(prodPlanInfo.state==='ok'){
+    var sa=prodPlanInfo.savedAt?new Date(prodPlanInfo.savedAt).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}):'';
+    el.textContent='In house: production plan'+(sa?' published '+sa:'');
+    el.style.color='#0f766e';
+  } else if(prodPlanInfo.state==='error'){
+    el.textContent='In house: production plan not available'; el.style.color='#b91c1c';
+  } else { el.textContent='In house: reading production plan…'; el.style.color='#6b7280'; }
+}
+function renderInHouse(){
+  var w=document.getElementById('whList'), sub=document.getElementById('whSub');
+  if(!w) return;
+  var codes={}; rows.forEach(function(r){ codes[r.code]=true; });
+  var list=whPOs.map(function(po){
+    var lines=po.items.filter(function(i){ return codes[i.code]; });
+    return {po:po, lines:lines, units:lines.reduce(function(s,i){ return s+i.qty; },0)};
+  }).filter(function(x){ return x.lines.length; }).sort(function(a,b){ return a.po.date<b.po.date?-1:a.po.date>b.po.date?1:0; });
+  var tot=list.reduce(function(s,x){ return s+x.units; },0);
+  if(sub) sub.textContent=list.length?'('+list.length+' works orders, '+Math.round(tot).toLocaleString()+' units)':'';
+  if(prodPlanInfo.state==='error'){
+    w.innerHTML='<p style="font-size:12px;color:#b91c1c;padding:8px">Could not read the production planner ('+esc(prodPlanInfo.error||'')+'). Nothing being made in house is counted until it can be reached.</p>'; return;
+  }
+  if(!list.length){ w.innerHTML='<p style="font-size:12px;color:#6b7280;padding:8px">No live works orders for stock codes in this planner.</p>'; return; }
+  w.innerHTML='<div style="overflow-x:auto"><table class="ptbl"><thead><tr><th style="text-align:left">Works order</th><th style="text-align:left">Due</th><th style="text-align:left">Lines (planner codes only)</th><th>Units</th></tr></thead><tbody>'
+    +list.map(function(x){
+      return '<tr><td style="font-family:monospace;white-space:nowrap">'+esc(x.po.ref)+(x.po.late?' <span class="badge br">late</span>':'')+'</td><td style="white-space:nowrap">'+fmtD(x.po.date)+'</td>'
+        +'<td>'+x.lines.map(function(i){ return esc(i.code)+' &times; '+Math.round(i.qty).toLocaleString(); }).join(', ')+'</td>'
+        +'<td style="text-align:right;font-weight:600">'+Math.round(x.units).toLocaleString()+'</td></tr>';
+    }).join('')+'</tbody></table></div>';
+}
+// Works orders grouped into one "Made in house" arrival per month for the
+// customer report, so a customer sees in-house production without a column
+// per works order (or any works order references).
+function inHouseMonthlyPOs(){
+  var byM={};
+  whPOs.forEach(function(po){
+    var k=po.date.slice(0,7);
+    var g=byM[k]=byM[k]||{ref:'In house '+k, name:'Made in house', date:po.date, inHouse:true, items:[]};
+    if(po.date>g.date) g.date=po.date;
+    po.items.forEach(function(i){
+      var ex=g.items.find(function(x){ return x.code===i.code; });
+      if(ex) ex.qty+=i.qty; else g.items.push({code:i.code, qty:i.qty});
+    });
+  });
+  return Object.keys(byM).sort().map(function(k){ return byM[k]; });
 }
 
 function savePO(){ if(!IS_EDITOR) return;
@@ -1127,7 +1249,7 @@ function renderProj(){
       // container also counts towards projected stock on arrival (lines
       // flagged delayed on those POs are excluded from the what-if too).
       var earlier=0;
-      cPOs.forEach(function(op){
+      allPOs().forEach(function(op){
         if(op.ref===po.ref) return;
         if(wksUntil(op.date)>wks) return;
         op.items.forEach(function(oi){
@@ -1143,7 +1265,7 @@ function renderProj(){
       // this container but inside its 12-week window reduce what the next
       // order must bring (delayed what-if lines excluded here too).
       var laterPOs=[];
-      cPOs.forEach(function(op){
+      allPOs().forEach(function(op){
         if(op.ref===po.ref) return;
         var dt=wksUntil(op.date)-wks;
         if(dt<=0||dt>=TARGET) return;
@@ -1249,10 +1371,10 @@ function renderProj(){
 // ── Runway ─────────────────────────────────────────────────────────────────
 function buildRW(r){
   var cs=[];
-  cPOs.forEach(function(po){
+  allPOs().forEach(function(po){
     var q=0;
     po.items.forEach(function(i){ if(i.code===r.code) q+=i.qty; });
-    if(q>0) cs.push({ref:po.ref,qty:q,wks:wksUntil(po.date)});
+    if(q>0) cs.push({ref:po.ref,qty:q,wks:wksUntil(po.date),inHouse:!!po.inHouse});
   });
   cs.sort(function(a,b){return a.wks-b.wks;});
   var rws=[], stk=r.free, n=now();
@@ -1268,10 +1390,16 @@ function buildRW(r){
   return rws;
 }
 
+// First-arrival chip: container refs in blue, works orders in teal with a hammer
+function rwArrChip(w,fs){
+  var ih=w.arr.every(function(c){ return c.inHouse; });
+  return '<span style="font-size:'+fs+';color:'+(ih?'#0f766e':'#1e40af')+';font-weight:600">'
+    +w.arr.map(function(c){ return (c.inHouse?'&#128296; ':'&#128682; ')+esc(c.ref); }).join(', ')+' Wk '+w.week+'</span>';
+}
 function rwTblHTML(r,rws){
   var h='<div class="rwtbl-wrap"><table class="rwtbl"><thead><tr>'
     +'<th style="text-align:left">Week</th><th style="text-align:left">Date</th>'
-    +'<th>Opening</th><th>Container arrival</th><th>Usage</th><th>Closing</th><th>Wks cover</th>'
+    +'<th>Opening</th><th>Arrivals (container / in house)</th><th>Usage</th><th>Closing</th><th>Wks cover</th>'
     +'</tr></thead><tbody>';
   rws.forEach(function(row){
     var cw=r.weeklyUsage>0?(row.close/r.weeklyUsage):99;
@@ -1279,7 +1407,7 @@ function rwTblHTML(r,rws){
     var cs=row.close<0?'style="color:#b91c1c;font-weight:700"':cw<4?'style="color:#92400e;font-weight:700"':'style="color:#065f46;font-weight:600"';
     var cws=row.close<=0?'<span style="color:#b91c1c;font-weight:700">&#9888; Out</span>':cw>=99?'99+':cw.toFixed(1);
     var ah=row.arr.length
-      ?row.arr.map(function(c){return'<span style="background:#dbeafe;color:#1e40af;font-size:10px;padding:1px 5px;border-radius:10px;font-weight:600">+'+Math.round(c.qty).toLocaleString()+' '+esc(c.ref)+'</span>';}).join(' ')
+      ?row.arr.map(function(c){return'<span style="background:'+(c.inHouse?'#ccfbf1':'#dbeafe')+';color:'+(c.inHouse?'#0f766e':'#1e40af')+';font-size:10px;padding:1px 5px;border-radius:10px;font-weight:600"'+(c.inHouse?' title="Made in house (works order)"':'')+'>+'+Math.round(c.qty).toLocaleString()+' '+(c.inHouse?'&#128296; ':'')+esc(c.ref)+'</span>';}).join(' ')
       :'<span style="color:#e5e7eb">&mdash;</span>';
     var uh=row.week===0?'<span style="color:#d1d5db">Today</span>':'<span style="color:#92400e">'+row.use.toLocaleString()+'</span>';
     h+='<tr class="'+rc+'"><td>Wk '+row.week+'</td>'
@@ -1310,7 +1438,7 @@ function openRWModal(uid){
     +(r.airFreightQty>0?'<span style="color:#c2410c;font-weight:600">&#9992; Air: '+r.airFreightQty.toLocaleString()+' units</span>':'')
     +(r.containerOrderQty>0?'<span style="color:#1e40af;font-weight:600">&#128682; Cont: '+r.containerOrderQty.toLocaleString()+' units</span>':'')
     +(fn?'<span style="color:#b91c1c;font-weight:600">&#9888; Goes negative Wk '+fn.week+' ('+fn.date.toLocaleDateString('en-GB',{day:'2-digit',month:'short'})+')</span>':'')
-    +(fa?'<span style="color:#1e40af;font-weight:600">&#128682; '+fa.arr.map(function(c){return c.ref;}).join(', ')+' Wk '+fa.week+'</span>':'');
+    +(fa?rwArrChip(fa,'inherit'):'');
   document.getElementById('rwContent').innerHTML=rwTblHTML(r,rws);
   document.getElementById('rwModal').classList.add('open');
 }
@@ -1345,7 +1473,7 @@ function renderRW(){
     var fn=rws.find(function(w){return w.close<0;});
     var fa=rws.find(function(w){return w.arr.length>0;});
     var nh=fn?'<span style="font-size:10px;color:#b91c1c;font-weight:600">&#9888; Out Wk '+fn.week+'</span>':'';
-    var ah=fa?'<span style="font-size:10px;color:#1e40af;font-weight:600">&#128682; '+fa.arr.map(function(c){return c.ref;}).join(', ')+' Wk '+fa.week+'</span>':'';
+    var ah=fa?rwArrChip(fa,'10px'):'';
     var airh=r.airFreightQty>0?'<span style="font-size:10px;color:#c2410c;font-weight:600">&#9992; '+r.airFreightQty.toLocaleString()+'u</span>':'';
     return '<div class="rwi"><div class="rwi-h" onclick="toggleRWI(\''+id+'\')"><span class="rwi-code">'+esc(r.code)+'</span>'
       +'<span class="rwi-desc" title="'+esc(r.desc)+'">'+esc(r.desc)+'</span>'
@@ -1374,6 +1502,7 @@ function updateStats(){
     {key:'air',       label:'Needs air freight',       color:'#c2410c', n:rows.filter(function(r){return r.airFreightQty>0;}).length},
     {key:'cont',      label:'Needs container',         color:'#1e40af', n:rows.filter(function(r){return r.containerOrderQty>0;}).length},
     {key:'oncont',    label:'On Container',            color:'#6d28d9', n:rows.filter(function(r){return r.onContainer>0;}).length},
+    {key:'onwop',     label:'Made in house',           color:'#0f766e', n:rows.filter(function(r){return r.onWOP>0;}).length},
     {key:'request',   label:'On Request',              color:'#5b21b6', n:rows.filter(function(r){return r.status==='request';}).length},
     {key:'obsolete',  label:'Obsolete',                color:'#6b7280', n:rows.filter(function(r){return r.status==='obsolete';}).length},
   ];
@@ -1404,6 +1533,8 @@ function tileFilter(key){
     document.getElementById('ofilt').value='cont';
   } else if(key==='oncont'){
     document.getElementById('ofilt').value='oncont';
+  } else if(key==='onwop'){
+    document.getElementById('ofilt').value='onwop';
   }
   renderTable();
   updateStats(); // refresh highlight
@@ -1466,6 +1597,7 @@ function tickAll(state){ if(!IS_EDITOR) return;
     if(of==='onsop'&&r.onSOP<=0) return;
     if(of==='onpo'&&r.onPO<=0) return;
     if(of==='oncont'&&r.onContainer<=0) return;
+    if(of==='onwop'&&!(r.onWOP>0)) return;
     r.included=state;
   });
   renderTable(); updateCapSum(); updateStats(); dbSave();
@@ -1570,6 +1702,7 @@ function resetCartons(){
     if(of==='air'&&r.airFreightQty<=0) return;
     if(of==='cont'&&r.containerOrderQty<=0) return;
     if(of==='oncont'&&r.onContainer<=0) return;
+    if(of==='onwop'&&!(r.onWOP>0)) return;
     if(of==='onsop'&&r.onSOP<=0) return;
     r.actCartons = r.adjCartons;   // adjCartons holds the recommended carton figure
     r.airManAdj = false;           // also let air re-default
@@ -1610,6 +1743,7 @@ function renderTable(){
     if(of==='onsop'&&r.onSOP<=0) return false;
     if(of==='onpo'&&r.onPO<=0) return false;
     if(of==='oncont'&&r.onContainer<=0) return false;
+    if(of==='onwop'&&!(r.onWOP>0)) return false;
     return true;
   });
   data.sort(function(a,b){
@@ -1620,7 +1754,7 @@ function renderTable(){
   });
   document.getElementById('rc').textContent=data.length.toLocaleString()+' items shown';
   var tb=document.getElementById('tBody');
-  if(!data.length){ tb.innerHTML='<tr><td colspan="15" style="text-align:center;padding:1.5rem;color:#6b7280">No items match</td></tr>'; return; }
+  if(!data.length){ tb.innerHTML='<tr><td colspan="16" style="text-align:center;padding:1.5rem;color:#6b7280">No items match</td></tr>'; return; }
   tb.innerHTML=data.map(rowHTML).join('');
 }
 
@@ -1663,6 +1797,10 @@ function rowHTML(r){
   var sopH  = r.onSOP>0      ? '<span style="font-weight:700;color:#1e40af">'+r.onSOP.toLocaleString()+'</span>' : dash();
   var poH   = r.onPO>0       ? '<span style="font-weight:600">'+r.onPO.toLocaleString()+'</span>'               : dash();
   var contC = r.onContainer>0 ? '<span style="color:#6d28d9;font-weight:600;font-size:11px">'+Math.round(r.onContainer).toLocaleString()+'</span>' : dash();
+  var whC = r.onWOP>0
+    ? '<span style="color:#0f766e;font-weight:600;font-size:11px" title="'+esc((r.wopRefs||[]).join('\n'))+'">'+Math.round(r.onWOP).toLocaleString()
+      +(r.wopLate?' <span style="color:#b91c1c" title="A works order is past its due date">&#9888;</span>':'')+'</span>'
+    : dash();
   var rowCls=(r.status==='obsolete'?'row-obs':r.status==='request'?'row-req':'')+' clickable'+(!r.included?' row-excl':'');
   var cbH='<input type="checkbox" class="inc-cb"'+(r.included?' checked':'')+' onclick="event.stopPropagation()" onchange="toggleIncl(\''+r._uid+'\',this.checked)">';
   return '<tr class="'+rowCls.trim()+'" id="row-'+id+'" data-uid="'+r._uid+'" data-code="'+esc(r.code)+'">'
@@ -1674,6 +1812,7 @@ function rowHTML(r){
     +'<td><div class="wks-bar"><div class="wks-track"><div class="wks-fill" style="width:'+pct.toFixed(0)+'%;background:'+bc+'"></div></div><span class="wks-num" style="color:'+bc+'">'+ws+'</span></div></td>'
     +'<td style="text-align:right">'+sopH+'</td>'
     +'<td style="text-align:right">'+contC+'</td>'
+    +'<td style="text-align:right">'+whC+'</td>'
     +'<td><span class="badge '+(statusCls[r.status]||'')+'">'+statusLbl[r.status]+'</span></td>'
     +'<td>'+airH+'</td>'
     +'<td style="text-align:right">'+contH+'</td>'
@@ -1855,7 +1994,7 @@ function setCustMap(custKey, code, field, val){ if(!IS_EDITOR) return;
 function monthStart(d, off){ return new Date(d.getFullYear(), d.getMonth()+off, 1); }
 function custProducts(cust){
   return rows.filter(function(r){ return r.code.indexOf(cust.prefix)===0; }).filter(function(r){
-    var arriving=cPOs.some(function(po){ return po.items.some(function(i){ return i.code===r.code && i.qty>0; }); });
+    var arriving=allPOs().some(function(po){ return po.items.some(function(i){ return i.code===r.code && i.qty>0; }); });
     return r.flag==='' || r.free>0 || r.weeklyUsage>0 || arriving;   // drop dead obsolete lines
   }).sort(function(a,b){ return a.code.localeCompare(b.code); });
 }
@@ -1873,7 +2012,9 @@ function buildCustomerReport(cust, startOff, nMonths){
     months.push({start:s,end:e,label:s.toLocaleDateString('en-GB',{month:'short',year:'numeric'}),short:s.toLocaleDateString('en-GB',{month:'short'})});
   }
   var winStart=months[0].start, winEnd=months[nMonths-1].end;
-  var conts=cPOs.map(function(po){ return {ref:po.ref,name:custContName(po.ref),date:new Date(po.date),po:po}; })
+  // Container POs plus in-house production grouped into one arrival per month
+  var pos=cPOs.concat(inHouseMonthlyPOs());
+  var conts=pos.map(function(po){ return {ref:po.ref,name:po.name||custContName(po.ref),date:new Date(po.date),po:po}; })
     .filter(function(c){ return c.date>=winStart && c.date<winEnd && c.po.items.some(function(i){ return i.code.indexOf(cust.prefix)===0 && i.qty>0; }); })
     .sort(function(a,b){ return a.date-b.date; });
   conts.forEach(function(c){ c.month=months.findIndex(function(m){ return c.date>=m.start && c.date<m.end; }); });
@@ -1882,7 +2023,7 @@ function buildCustomerReport(cust, startOff, nMonths){
     var stock=r.free;
     var wksBefore=Math.max(0,(winStart-t0)/(7*86400000));
     stock-=r.weeklyUsage*wksBefore;
-    cPOs.forEach(function(po){ if(new Date(po.date)<winStart) po.items.forEach(function(i){ if(i.code===r.code) stock+=i.qty; }); });
+    pos.forEach(function(po){ if(new Date(po.date)<winStart) po.items.forEach(function(i){ if(i.code===r.code) stock+=i.qty; }); });
     var opening=stock;
     var mcols=months.map(function(m,mi){
       var from=(m.start>t0)?m.start:t0;
@@ -2019,7 +2160,7 @@ function renderReportMap(model){
     +'<p>Supplier names are hidden automatically (any Supertouch PO shows as &ldquo;ST&rdquo;). Type a different name here to override what a container is called on this report; leave blank to use our own reference.</p>'
     +(model.conts.length
       ?'<div style="overflow-x:auto"><table class="ptbl" style="max-width:640px"><thead><tr><th style="text-align:left">Our reference</th><th style="text-align:left">Arrives</th><th style="text-align:left">Shown to customer as</th></tr></thead><tbody>'
-        +model.conts.map(function(c){
+        +model.conts.filter(function(c){ return !c.po.inHouse; }).map(function(c){
           var ov=containerAliases[c.ref]||'';
           return '<tr><td style="font-family:monospace">'+esc(c.ref)+'</td><td>'+fmtD(d2s(c.date))+'</td>'
             +'<td style="text-align:left"><input class="map-input" style="width:160px" value="'+esc(ov)+'" placeholder="'+esc(c.name)+'" onchange="setContAlias(\''+esc(c.ref).replace(/'/g,"\\'")+'\',this.value)">'
@@ -2164,7 +2305,7 @@ function applyMode(){
 function publishData(){ if(!IS_EDITOR){ alert("View-only mode."); return; }
   if(!rows.length){ alert('Load stock data first.'); return; }
   var state = {rows:rows, cPOs:cPOs, bookedPOs:bookedPOs, nextContDate:nextContDate, customerMaps:customerMaps, containerAliases:containerAliases, savedAt:new Date().toISOString()};
-  var blob = new Blob([JSON.stringify(state)], {type:'application/json'});
+  var blob = new Blob([JSON.stringify(state, stripInHouse)], {type:'application/json'});
   var a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = 'data.json';
@@ -2212,7 +2353,7 @@ function dbSave(){ clearTimeout(saveTimer); saveTimer=setTimeout(saveState,1200)
 function saveState(){
   var json='';
   try{
-    json=JSON.stringify({rows:rows,cPOs:cPOs,bookedPOs:bookedPOs,nextContDate:nextContDate,customerMaps:customerMaps,containerAliases:containerAliases,savedAt:new Date().toISOString()});
+    json=JSON.stringify({rows:rows,cPOs:cPOs,bookedPOs:bookedPOs,nextContDate:nextContDate,customerMaps:customerMaps,containerAliases:containerAliases,savedAt:new Date().toISOString()}, stripInHouse);
   }catch(e){ console.log('Save failed:',e); saveFailed('could not serialise'); return; }
   var localOK=false;
   try{ localStorage.setItem('tibard_v5',json); localOK=true; }catch(e){ console.log('localStorage save failed:',e); }
@@ -2254,7 +2395,10 @@ function loadEditor(){
       haveRows=applyState(s);
       try{ localStorage.setItem('tibard_v5', json); }catch(e){}
     }
-    if(!haveRows) fetchSharedData();
+    // Either way, the production planner's live works orders are read once
+    // the planner's own data is in.
+    if(!haveRows) fetchSharedData(function(){ fetchProductionPlan(); });
+    else fetchProductionPlan();
   });
 }
 function clearAll(){
@@ -2301,11 +2445,13 @@ document.addEventListener('DOMContentLoaded',function(){
   if(/[?&]tab=reports\b/.test(window.location.search)) showTab('reports');
   // Editor: load their own working copy from localStorage first; fall back to shared
   // Viewer: always load the shared published data.json
+  // Either way, the production planner's live works orders are read afterwards.
   if(IS_EDITOR){
     loadEditor();
   } else {
     fetchSharedData(function(ok){
       // If no data.json exists yet, viewer just sees the empty prompt
+      fetchProductionPlan();
     });
   }
   document.getElementById('tBody').addEventListener('click',function(e){
