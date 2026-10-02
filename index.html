@@ -397,6 +397,24 @@ body.viewer-mode .view-only{display:block !important}
       </div>
     </div>
 
+    <!-- One-off orders (from an import of the Sage order lines) -->
+    <div class="panel">
+      <div class="ph" onclick="togglePB('ooPB')"><h2>&#9888; One-off orders <span id="ooSub" style="font-size:11px;opacity:.75"></span></h2><span class="sub">Large orders that lift the 6-month rate &nbsp;|&nbsp; Click to expand</span></div>
+      <div class="pb" id="ooPB">
+        <p style="font-size:11px;color:#4b5563;margin-bottom:8px">A line gets a <span class="badge ba">1-OFF</span> badge when orders worth 8+ weeks of its 2-year sales, from customers who had not ordered it at that size in the previous year, make up a quarter or more of the last 26 weeks' sales. Hover the badge for the orders and the rate without them. Large orders from regular buyers (Booker, Alliance, CLEAN) are listed in the hover but count as normal demand. The planner's own rate is not changed.</p>
+        <div id="shInfo" style="font-size:12px;margin-bottom:8px"></div>
+        <div class="edit-only" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <label class="btn" style="font-size:11px;padding:4px 10px;cursor:pointer">&#8681; Import the SQL 1 grid (.csv)<input type="file" accept=".csv,.txt,.tsv" style="display:none" onchange="importSalesFile(this)"></label>
+          <span style="font-size:11px;color:#6b7280">Save the Query1 sheet as CSV (every sales order line since 2024), or paste the grid below. Only the per-line summary is kept and published.</span>
+          <button class="btn" style="font-size:11px;padding:3px 9px;margin-left:auto" onclick="clearSalesHistory()">&#10005; Remove</button>
+        </div>
+        <div class="edit-only" style="margin-top:6px">
+          <textarea id="shTA" rows="3" style="width:100%;font-size:11px;font-family:monospace;border:1px solid #c8d0df;border-radius:5px;padding:6px" placeholder="…or paste the Query1 grid here, header row included"></textarea>
+          <button class="btn" style="font-size:11px;padding:3px 9px;margin-top:4px" onclick="importSalesPaste()">Import pasted grid</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Weekly Runway -->
     <div class="panel">
       <div class="ph" onclick="togglePB('rwPB')"><h2>&#128200; Weekly Stock Runway</h2><span class="sub">Click any table row for popup &nbsp;|&nbsp; Expand for all active items</span></div>
@@ -431,6 +449,7 @@ body.viewer-mode .view-only{display:block !important}
         <option value="onsop">Has On SOP</option>
         <option value="oncont">On a container PO</option>
         <option value="onwop">Being made in house</option>
+        <option value="oneoff">6m sales lifted by one-off orders</option>
       </select>
       <button class="btn" onclick="clearFilt()" style="font-size:11px;padding:4px 9px">&#10005; Clear filters</button>
       <button class="btn edit-only" onclick="resetView()" style="font-size:11px;padding:4px 9px">&#8635; Reset view</button>
@@ -697,7 +716,7 @@ function showData(){
   document.getElementById('dataWrap').classList.remove('hidden');
   initSbar();
   document.getElementById('lastUpdated').textContent = 'Loaded: '+now().toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
-  updateStats(); renderTable(); renderPOCards(); renderProj(); renderRW(); updateCapSum(); renderBookedPOs(); renderInHouse(); renderProdPlanInfo(); renderReport();
+  updateStats(); renderTable(); renderPOCards(); renderProj(); renderRW(); updateCapSum(); renderBookedPOs(); renderInHouse(); renderProdPlanInfo(); renderOneOffInfo(); renderReport();
 }
 
 // ── Order qty calculations ─────────────────────────────────────────────────
@@ -821,6 +840,7 @@ function recalcContainers(){
     });
   });
   recalcInHouse();
+  applyOneOff();
 }
 
 // ── In-house production (live works orders from the production planner) ────
@@ -836,7 +856,7 @@ var prodPlanInfo={state:'loading'};
 function allPOs(){ return cPOs.concat(whPOs); }
 // What came from the production planner is rebuilt on every load, so it is
 // never written into the planner's own saved or published data.
-var IN_HOUSE_FIELDS={onWOP:1, wopLate:1, wopRefs:1};
+var IN_HOUSE_FIELDS={onWOP:1, wopLate:1, wopRefs:1, oneOff:1};   // oneOff is rebuilt from the oneOff map on load
 function stripInHouse(k,v){ return IN_HOUSE_FIELDS[k]?undefined:v; }
 
 function fetchProductionPlan(cb){
@@ -923,6 +943,149 @@ function inHouseMonthlyPOs(){
     });
   });
   return Object.keys(byM).sort().map(function(k){ return byM[k]; });
+}
+
+// ── One-off orders (from an import of the Sage order lines) ───────────────
+// The stock paste only carries 6-month sales totals, so the editor imports
+// the SQL 1 grid (every sales order line since 2024) now and then. A line
+// gets a 1-OFF badge when orders worth 8+ weeks of its 2-year sales, from
+// customers who had not ordered it at that size in the previous year, make
+// up a quarter or more of the last 26 weeks' sales. Only the per-code
+// summary (oneOff) and the import details (salesHist) are kept and
+// published; the order lines themselves are not stored.
+var oneOffs={};         // code -> {units, s26, rateEx, orders:[{d,c,q}], regular:[{d,c,q}]}; each row gets r.oneOff from it
+var salesHist=null;     // {at, from, to, lines, flagged}
+var ONEOFF_WEEKS=8, ONEOFF_MIN=20, ONEOFF_SHARE=0.25;
+
+function applyOneOff(){ rows.forEach(function(r){ r.oneOff=oneOffs[r.code]||null; }); }
+function oneOffTip(r){
+  var o=r.oneOff; if(!o) return '';
+  var t='One-off orders: '+Math.round(o.units).toLocaleString()+' of the '+Math.round(o.s26).toLocaleString()+' units sold in the last 26 weeks ('+Math.round(o.units/Math.max(1,o.s26)*100)+'%).'
+    +'\nRate without them: '+o.rateEx.toFixed(1)+'/wk (planner uses '+(r.weeklyUsage||0).toFixed(1)+'/wk).'
+    +'\n\nOne-off (customer had not ordered this line at that size in the previous year):';
+  o.orders.forEach(function(x){ t+='\n  '+fmtD(x.d)+'  '+x.c+'  '+Math.round(x.q).toLocaleString(); });
+  if(o.regular&&o.regular.length){
+    t+='\n\nOther large orders in the period, from repeat buyers (counted as normal demand):';
+    o.regular.forEach(function(x){ t+='\n  '+fmtD(x.d)+'  '+x.c+'  '+Math.round(x.q).toLocaleString(); });
+  }
+  return t;
+}
+function oneOffBadge(r){ return (r&&r.oneOff)?' <span class="badge ba" title="'+esc(oneOffTip(r))+'">1-OFF</span>':''; }
+function renderOneOffInfo(){
+  var el=document.getElementById('shInfo'), sub=document.getElementById('ooSub');
+  if(!el) return;
+  if(!salesHist){ el.textContent='No sales history imported yet, so no lines are flagged.'; if(sub) sub.textContent=''; return; }
+  var age=(now()-new Date(salesHist.at))/86400000;
+  el.innerHTML='Sales history '+fmtD(salesHist.from)+' to '+fmtD(salesHist.to)+' ('+salesHist.lines.toLocaleString()+' order lines, imported '+fmtD(salesHist.at.slice(0,10))+'): <strong>'+salesHist.flagged+'</strong> line'+(salesHist.flagged===1?'':'s')+' flagged.'
+    +(age>60?' <span style="color:#b91c1c">The import is over 60 days old: import a fresh grid.</span>':'');
+  if(sub) sub.textContent=salesHist.flagged?'('+salesHist.flagged+' flagged)':'';
+}
+// CSV / TSV parser: quoted fields ("" for a quote), delimiter taken from the header line
+function parseDelimited(text){
+  text=String(text||'').replace(/^﻿/,'');
+  var nl=text.indexOf('\n'), head=nl<0?text:text.slice(0,nl);
+  var delim=head.indexOf('\t')>=0?'\t':',';
+  var out=[], raw=text.split('\n'), buf='';
+  for(var i=0;i<raw.length;i++){
+    var line=buf?buf+'\n'+raw[i]:raw[i];
+    if(line.charAt(line.length-1)==='\r') line=line.slice(0,-1);
+    // a quoted field may contain a newline: keep reading while quotes are unbalanced
+    if((line.split('"').length-1)%2===1){ buf=line; continue; }
+    buf='';
+    if(!line.trim()) continue;
+    if(line.indexOf('"')<0){ out.push(line.split(delim)); continue; }
+    var row=[], f='', q=false;
+    for(var j=0;j<line.length;j++){
+      var ch=line.charAt(j);
+      if(q){ if(ch==='"'){ if(line.charAt(j+1)==='"'){ f+='"'; j++; } else q=false; } else f+=ch; }
+      else if(ch==='"') q=true;
+      else if(ch===delim){ row.push(f); f=''; }
+      else f+=ch;
+    }
+    row.push(f); out.push(row);
+  }
+  return out;
+}
+function parseAnyDate(s){
+  s=(s||'').trim(); if(!s) return null;
+  var m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/); if(m) return new Date(+m[1],+m[2]-1,+m[3]);
+  m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);                       // UK d/m/y, as Excel saves it
+  if(m){ var y=+m[3]; if(y<100) y+=2000; return new Date(y,+m[2]-1,+m[1]); }
+  var d=new Date(s); return isNaN(d.getTime())?null:d;
+}
+function importSalesHistory(text){
+  if(!IS_EDITOR) return;
+  if(!rows.length){ alert('Load the stock data first, so the order lines can be matched to the planner\'s codes.'); return; }
+  var recs=parseDelimited(text);
+  if(recs.length<2){ alert('Nothing to import.'); return; }
+  var hdr=recs[0].map(function(h){ return (h||'').trim().toLowerCase(); });
+  function col(names){ for(var i=0;i<names.length;i++){ var k=hdr.indexOf(names[i]); if(k>=0) return k; } return -1; }
+  var cDate=col(['orderdate','date','documentdate']), cAcct=col(['account','customeraccountnumber']), cName=col(['customername','customer','customeraccountname']),
+      cCode=col(['stockcode','code','itemcode']), cQty=col(['qtydespatched','despatchreceiptquantity','qtyordered','linequantity','qty','quantity']), cType=col(['doctype','documenttype']);   // despatched first: that is what the planner's 6-month sales count
+  if(cDate<0||cCode<0||cQty<0){ alert('Could not find the OrderDate, StockCode and QtyOrdered columns. Import the SQL 1 grid as it comes out of Sage, with its header row.'); return; }
+  var known={}, planned={}; rows.forEach(function(r){ known[r.code]=true; if(!r.flag) planned[r.code]=true; });   // on-request and obsolete lines are not planned, so not flagged
+  var lines=[], end=null, start=null;
+  for(var i=1;i<recs.length;i++){
+    var rec=recs[i]; if(rec.length<=Math.max(cDate,cCode,cQty)) continue;
+    if(cType>=0){ var ty=(rec[cType]||'').trim().toLowerCase(); if(ty&&ty!=='order') continue; }   // returns, quotes and pro formas are not demand
+    var code=(rec[cCode]||'').trim(); if(!code) continue;
+    if(!known[code]&&code.indexOf('BULK')===0&&known[code.slice(4)]) code=code.slice(4);          // Booker buys the TW lines on BULK codes
+    if(!known[code]) continue;
+    var q=pn(rec[cQty]); if(!(q>0)) continue;
+    var d=parseAnyDate(rec[cDate]); if(!d) continue;
+    var acct=((cAcct>=0?rec[cAcct]:'')||(cName>=0?rec[cName]:'')||'').trim(), name=((cName>=0?rec[cName]:'')||acct).trim();
+    lines.push({d:d.getTime(), code:code, a:acct, c:name, q:q});
+    if(end===null||d>end) end=d; if(start===null||d<start) start=d;
+  }
+  if(!lines.length){ alert('No order lines matched the planner\'s codes.'); return; }
+  var W=7*86400000, endT=end.getTime(), t104=endT-104*W, t26=endT-26*W, t52=52*W;
+  var tot104={}, s26={}, byKey={};
+  lines.forEach(function(l){
+    if(l.d>=t104) tot104[l.code]=(tot104[l.code]||0)+l.q;
+    if(l.d>=t26) s26[l.code]=(s26[l.code]||0)+l.q;
+    var k=l.a+'|'+l.code; (byKey[k]=byKey[k]||[]).push(l);
+  });
+  Object.keys(byKey).forEach(function(k){ byKey[k].sort(function(x,y){ return x.d-y.d; }); });
+  var res={};
+  lines.forEach(function(l){
+    if(l.d<t26) return;
+    var thr=Math.max(ONEOFF_MIN, ONEOFF_WEEKS*(tot104[l.code]||0)/104);
+    if(l.q<thr) return;
+    var prev=byKey[l.a+'|'+l.code], rep=false;
+    for(var i=0;i<prev.length;i++){ var p=prev[i]; if(p.d>=l.d) break; if(p.d>=l.d-t52&&p.q>=0.5*l.q){ rep=true; break; } }
+    var o=res[l.code]=res[l.code]||{units:0, s26:s26[l.code]||0, orders:[], regular:[]};
+    var rec2={d:d2s(new Date(l.d)), c:l.c, q:l.q};
+    if(rep) o.regular.push(rec2); else { o.units+=l.q; o.orders.push(rec2); }
+  });
+  var next={}, byQ=function(x,y){ return y.q-x.q; };
+  Object.keys(res).forEach(function(code){
+    var o=res[code];
+    if(!planned[code]||!(o.units>0)||o.units<ONEOFF_SHARE*o.s26) return;
+    o.orders.sort(byQ); o.regular.sort(byQ); o.orders=o.orders.slice(0,6); o.regular=o.regular.slice(0,6);
+    o.rateEx=Math.max(0,o.s26-o.units)/26;
+    next[code]=o;
+  });
+  oneOffs=next;
+  salesHist={at:new Date().toISOString(), from:d2s(start), to:d2s(end), lines:lines.length, flagged:Object.keys(oneOffs).length};
+  applyOneOff(); saveState();
+  updateStats(); renderTable(); renderProj(); renderRW(); renderOneOffInfo();
+}
+function importSalesFile(input){
+  var f=input.files&&input.files[0]; if(!f) return;
+  var rd=new FileReader();
+  rd.onload=function(){ importSalesHistory(String(rd.result||'')); input.value=''; };
+  rd.onerror=function(){ alert('Could not read the file.'); input.value=''; };
+  rd.readAsText(f);
+}
+function importSalesPaste(){
+  var ta=document.getElementById('shTA'); if(!ta||!ta.value.trim()){ alert('Paste the grid first.'); return; }
+  importSalesHistory(ta.value); ta.value='';
+}
+function clearSalesHistory(){
+  if(!IS_EDITOR) return;
+  if(!confirm('Remove the sales history and all 1-OFF flags?')) return;
+  oneOffs={}; salesHist=null; applyOneOff(); saveState();
+  updateStats(); renderTable(); renderProj(); renderRW(); renderOneOffInfo();
 }
 
 function savePO(){ if(!IS_EDITOR) return;
@@ -1284,7 +1447,7 @@ function renderProj(){
       needAtArr=Math.max(needAtArr, (TARGET*r.weeklyUsage)-landedAfter);
       var np=r.weeklyUsage>0?Math.max(0,Math.ceil(needAtArr-proj)):0;
       if(short&&pw>=TARGET) return;
-      prows.push({po:po.ref,date:po.date,wks,code:r.code,desc:r.desc,flag:r.flag,free:r.free,used,earlier,qty:it.qty,delayed:isDelayed,proj,pw,np,ctn:r.carton,wu:r.weeklyUsage,poIdx,itIdx});
+      prows.push({po:po.ref,date:po.date,wks,code:r.code,desc:r.desc,flag:r.flag,oo:r.oneOff,free:r.free,used,earlier,qty:it.qty,delayed:isDelayed,proj,pw,np,ctn:r.carton,wu:r.weeklyUsage,poIdx,itIdx});
     });
   });
   // Build a delay-impact summary (only for the delayed lines on the selected container)
@@ -1351,7 +1514,8 @@ function renderProj(){
     var delToggle='<td style="text-align:center"><label style="cursor:pointer;display:inline-flex;align-items:center;gap:3px;font-size:10px;color:'+(p.delayed?'#b91c1c':'#6b7280')+';font-weight:'+(p.delayed?'700':'400')+'"><input type="checkbox" '+(p.delayed?'checked':'')+' style="cursor:pointer;accent-color:#b91c1c" onchange="toggleDelayed(\''+esc(p.po).replace(/\'/g,"\\'")+'\',\''+esc(p.code).replace(/\'/g,"\\'")+'\',this.checked)">'+(p.delayed?'Delayed':'')+'</label></td>';
     return '<tr'+(p.delayed?' style="background:#fef2f2"':'')+'>'
       +'<td style="font-family:monospace;font-size:10px;white-space:nowrap">'+esc(p.code)
-        +(p.flag==='req'?' <span class="badge bp" title="On request item — not included in automatic ordering">REQ</span>':p.flag==='obs'?' <span class="badge bgr" title="Obsolete item">OBS</span>':'')+'</td>'
+        +(p.flag==='req'?' <span class="badge bp" title="On request item — not included in automatic ordering">REQ</span>':p.flag==='obs'?' <span class="badge bgr" title="Obsolete item">OBS</span>':'')
+        +oneOffBadge({oneOff:p.oo, weeklyUsage:p.wu})+'</td>'
       +'<td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(p.desc)+'">'+esc(p.desc)+'</td>'
       +'<td><span class="badge bb">'+esc(p.po)+'</span></td>'
       +'<td>'+fmtD(p.date)+'</td>'
@@ -1435,6 +1599,7 @@ function openRWModal(uid){
       +'</span>'
     +'<span>Wkly use: <strong>'+r.weeklyUsage.toFixed(1)+'</strong></span>'
     +'<span>Curr: <strong>'+(r.weeksOfCover>=99?'99+':r.weeksOfCover.toFixed(1))+' wks</strong></span>'
+    +(r.oneOff?'<span style="color:#92400e;font-weight:600" title="'+esc(oneOffTip(r))+'">&#9888; One-off orders: '+Math.round(r.oneOff.units).toLocaleString()+' of '+Math.round(r.oneOff.s26).toLocaleString()+' units in 6m, '+r.oneOff.rateEx.toFixed(1)+'/wk without them</span>':'')
     +(r.airFreightQty>0?'<span style="color:#c2410c;font-weight:600">&#9992; Air: '+r.airFreightQty.toLocaleString()+' units</span>':'')
     +(r.containerOrderQty>0?'<span style="color:#1e40af;font-weight:600">&#128682; Cont: '+r.containerOrderQty.toLocaleString()+' units</span>':'')
     +(fn?'<span style="color:#b91c1c;font-weight:600">&#9888; Goes negative Wk '+fn.week+' ('+fn.date.toLocaleDateString('en-GB',{day:'2-digit',month:'short'})+')</span>':'')
@@ -1503,6 +1668,7 @@ function updateStats(){
     {key:'cont',      label:'Needs container',         color:'#1e40af', n:rows.filter(function(r){return r.containerOrderQty>0;}).length},
     {key:'oncont',    label:'On Container',            color:'#6d28d9', n:rows.filter(function(r){return r.onContainer>0;}).length},
     {key:'onwop',     label:'Made in house',           color:'#0f766e', n:rows.filter(function(r){return r.onWOP>0;}).length},
+    {key:'oneoff',    label:'One-off orders in 6m',    color:'#92400e', n:rows.filter(function(r){return !!r.oneOff;}).length},
     {key:'request',   label:'On Request',              color:'#5b21b6', n:rows.filter(function(r){return r.status==='request';}).length},
     {key:'obsolete',  label:'Obsolete',                color:'#6b7280', n:rows.filter(function(r){return r.status==='obsolete';}).length},
   ];
@@ -1535,6 +1701,8 @@ function tileFilter(key){
     document.getElementById('ofilt').value='oncont';
   } else if(key==='onwop'){
     document.getElementById('ofilt').value='onwop';
+  } else if(key==='oneoff'){
+    document.getElementById('ofilt').value='oneoff';
   }
   renderTable();
   updateStats(); // refresh highlight
@@ -1598,6 +1766,7 @@ function tickAll(state){ if(!IS_EDITOR) return;
     if(of==='onpo'&&r.onPO<=0) return;
     if(of==='oncont'&&r.onContainer<=0) return;
     if(of==='onwop'&&!(r.onWOP>0)) return;
+    if(of==='oneoff'&&!r.oneOff) return;
     r.included=state;
   });
   renderTable(); updateCapSum(); updateStats(); dbSave();
@@ -1703,6 +1872,7 @@ function resetCartons(){
     if(of==='cont'&&r.containerOrderQty<=0) return;
     if(of==='oncont'&&r.onContainer<=0) return;
     if(of==='onwop'&&!(r.onWOP>0)) return;
+    if(of==='oneoff'&&!r.oneOff) return;
     if(of==='onsop'&&r.onSOP<=0) return;
     r.actCartons = r.adjCartons;   // adjCartons holds the recommended carton figure
     r.airManAdj = false;           // also let air re-default
@@ -1744,6 +1914,7 @@ function renderTable(){
     if(of==='onpo'&&r.onPO<=0) return false;
     if(of==='oncont'&&r.onContainer<=0) return false;
     if(of==='onwop'&&!(r.onWOP>0)) return false;
+    if(of==='oneoff'&&!r.oneOff) return false;
     return true;
   });
   data.sort(function(a,b){
@@ -1805,7 +1976,7 @@ function rowHTML(r){
   var cbH='<input type="checkbox" class="inc-cb"'+(r.included?' checked':'')+' onclick="event.stopPropagation()" onchange="toggleIncl(\''+r._uid+'\',this.checked)">';
   return '<tr class="'+rowCls.trim()+'" id="row-'+id+'" data-uid="'+r._uid+'" data-code="'+esc(r.code)+'">'
     +'<td style="text-align:center">'+cbH+'</td>'
-    +'<td>'+esc(r.code)+'</td>'
+    +'<td>'+esc(r.code)+oneOffBadge(r)+'</td>'
     +'<td title="'+esc(r.desc)+'" style="max-width:185px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(r.desc)+'</td>'
     +'<td style="text-align:right">'+r.free.toLocaleString()+'</td>'
     +'<td style="text-align:right">'+r.weeklyUsage.toFixed(1)+'</td>'
@@ -2304,7 +2475,7 @@ function applyMode(){
 // ── Publish data for the team (editor only) ─────────────────────────────────
 function publishData(){ if(!IS_EDITOR){ alert("View-only mode."); return; }
   if(!rows.length){ alert('Load stock data first.'); return; }
-  var state = {rows:rows, cPOs:cPOs, bookedPOs:bookedPOs, nextContDate:nextContDate, customerMaps:customerMaps, containerAliases:containerAliases, savedAt:new Date().toISOString()};
+  var state = {rows:rows, cPOs:cPOs, bookedPOs:bookedPOs, nextContDate:nextContDate, customerMaps:customerMaps, containerAliases:containerAliases, oneOffs:oneOffs, salesHist:salesHist, savedAt:new Date().toISOString()};
   var blob = new Blob([JSON.stringify(state, stripInHouse)], {type:'application/json'});
   var a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -2353,7 +2524,7 @@ function dbSave(){ clearTimeout(saveTimer); saveTimer=setTimeout(saveState,1200)
 function saveState(){
   var json='';
   try{
-    json=JSON.stringify({rows:rows,cPOs:cPOs,bookedPOs:bookedPOs,nextContDate:nextContDate,customerMaps:customerMaps,containerAliases:containerAliases,savedAt:new Date().toISOString()}, stripInHouse);
+    json=JSON.stringify({rows:rows,cPOs:cPOs,bookedPOs:bookedPOs,nextContDate:nextContDate,customerMaps:customerMaps,containerAliases:containerAliases,oneOffs:oneOffs,salesHist:salesHist,savedAt:new Date().toISOString()}, stripInHouse);
   }catch(e){ console.log('Save failed:',e); saveFailed('could not serialise'); return; }
   var localOK=false;
   try{ localStorage.setItem('tibard_v5',json); localOK=true; }catch(e){ console.log('localStorage save failed:',e); }
@@ -2374,7 +2545,7 @@ function applyState(s){
   try{
     stateLoadedAt=s.savedAt||'';
     if(!s.rows||!s.rows.length) return false;
-    rows=s.rows; cPOs=s.cPOs||[]; bookedPOs=s.bookedPOs||[]; ensureUIDs(); nextContDate=s.nextContDate||null; customerMaps=s.customerMaps||{}; containerAliases=s.containerAliases||{};
+    rows=s.rows; cPOs=s.cPOs||[]; bookedPOs=s.bookedPOs||[]; ensureUIDs(); nextContDate=s.nextContDate||null; customerMaps=s.customerMaps||{}; containerAliases=s.containerAliases||{}; oneOffs=s.oneOffs||{}; salesHist=s.salesHist||null;
     var sa=s.savedAt?new Date(s.savedAt).toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}):'';
     document.getElementById('lastUpdated').textContent='Last saved: '+sa;
     recalcContainers(); recalcQtys(); showData();
@@ -2406,7 +2577,7 @@ function clearAll(){
   try{
     localStorage.removeItem('tibard_v5');
     try{ idbOpen(function(db){ if(!db) return; try{ db.transaction(IDB_STORE,'readwrite').objectStore(IDB_STORE).delete('state'); }catch(e){} }); }catch(e){}
-    rows=[];cPOs=[];bookedPOs=[];nextContDate=null;customerMaps={};containerAliases={};
+    rows=[];cPOs=[];bookedPOs=[];nextContDate=null;customerMaps={};containerAliases={};oneOffs={};salesHist=null;
     document.getElementById('dataWrap').classList.add('hidden');
     document.getElementById('uzone').classList.remove('hidden');
     document.getElementById('sbar').style.display='none';
@@ -2424,7 +2595,7 @@ function fetchSharedData(cb){
     return r.json();
   }).then(function(s){
     if(s && s.rows && s.rows.length){
-      rows = s.rows; ensureUIDs(); cPOs = s.cPOs || []; bookedPOs = s.bookedPOs || []; nextContDate = s.nextContDate || null; customerMaps = s.customerMaps || {}; containerAliases = s.containerAliases || {};
+      rows = s.rows; ensureUIDs(); cPOs = s.cPOs || []; bookedPOs = s.bookedPOs || []; nextContDate = s.nextContDate || null; customerMaps = s.customerMaps || {}; containerAliases = s.containerAliases || {}; oneOffs = s.oneOffs || {}; salesHist = s.salesHist || null;
       var sa = s.savedAt ? new Date(s.savedAt).toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
       document.getElementById('lastUpdated').textContent = 'Published: ' + sa;
       var bd = document.getElementById('bannerDate');
