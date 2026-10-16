@@ -35,3 +35,27 @@ viewers read. There are two ways it can do that:
 A token that can write this repo can change anything in it, the page
 included, so keep it to the one PC that publishes. Every publish is a commit,
 so the repo's history holds every version of the plan.
+
+## Clockwork prices and container values
+
+The editor's page has a **Clockwork prices** panel. Paste the container order
+template's Data tab into it (stock code through to the Clockwork price, row 2
+down) and press **Save prices**. Pasting again updates the codes it covers and
+keeps the rest. The prices are saved in that browser only: they are not
+published in `data.json`, and the view-only page never shows a price, a
+container value or the panel itself.
+
+With prices on the PC:
+
+- **Export container** and **Export air freight** add `Price` and `Total
+  Price` columns to the CSV, with the total value on the TOTALS row. A line
+  whose code is not in the list is left blank, and the export summary says
+  how many lines are unpriced.
+- **Mark as booked in** opens a box with the container's value in USD,
+  worked out line by line from the list, which can be changed before booking
+  in. The value is kept on the booked container (`valueUSD`) and is published
+  with the plan, so the KPI dashboard reads it for Clockwork stock bought in.
+  **✎ value** on a booked card changes it later; undoing a booking clears it.
+
+Without prices, the book-in box is empty and the value can be typed from the
+invoice, or left blank and added later.

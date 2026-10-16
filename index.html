@@ -374,6 +374,21 @@ body.viewer-mode .view-only{display:block !important}
       </div>
     </div>
 
+    <!-- Clockwork prices (editor only; never published) -->
+    <div class="panel edit-only">
+      <div class="ph" onclick="togglePB('pricePB')"><h2>&#128178; Clockwork prices <span id="priceSub" style="font-size:11px;opacity:.75"></span></h2><span class="sub">USD per garment &nbsp;|&nbsp; Click to expand</span></div>
+      <div class="pb" id="pricePB">
+        <div id="priceStatus" style="font-size:12px;color:#4b5563;margin-bottom:8px"></div>
+        <p style="font-size:11px;color:#4b5563;margin-bottom:5px">From the container order template, Data tab: select from <code>Tibard Stock Code</code> across to <code>Clockwork Price ($)</code>, row 2 down &rarr; Ctrl+C &rarr; paste below. Pasting again updates the codes it covers and keeps the rest.</p>
+        <textarea id="priceTA" placeholder="Paste stock code … price rows here"></textarea>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn btn-p" style="font-size:12px" onclick="savePrices()">&#10003; Save prices</button>
+          <button class="btn" style="font-size:12px" onclick="clearPrices()">&#128465; Clear prices</button>
+          <span style="font-size:11px;color:#6b7280;margin-left:auto">Used to value a container when it is booked in and to put Price and Total Price on exports. Never shown on the view-only page.</span>
+        </div>
+      </div>
+    </div>
+
     <!-- Booked-In Containers History -->
     <div class="panel">
       <div class="ph" onclick="togglePB('bookedPB')"><h2>&#9989; Booked-In Containers <span id="bookedSub" style="font-size:11px;opacity:.75"></span></h2><span class="sub">Click to expand</span></div>
@@ -527,6 +542,25 @@ body.viewer-mode .view-only{display:block !important}
 </div>
 
 <!-- Export modal -->
+<!-- Book in a container, with its value in USD -->
+<div class="modal-bg" id="bookModal">
+  <div class="modal-box sm">
+    <div class="mhdr"><h3>&#10003; Book in <span id="bookRef"></span></h3><button class="mclose" onclick="closeBook()">&times;</button></div>
+    <div class="mbody">
+      <p style="font-size:12px;color:#4b5563;margin-bottom:10px">The container moves from the tracker into Booked-In Containers, dated today.</p>
+      <div style="background:#f0f7ff;border:1px solid #bdd5f0;border-radius:6px;padding:9px;margin-bottom:10px;font-size:12px;color:#1F3864" id="bookSum"></div>
+      <div class="egrid" style="grid-template-columns:1fr">
+        <div><label>Value of the container (USD)</label><input type="text" id="bookUSD" inputmode="decimal" placeholder="e.g. 149679.00" onkeydown="if(event.key==='Enter')doBookIn()"></div>
+      </div>
+      <p id="bookHint" style="font-size:11px;color:#4b5563;margin:-4px 0 10px"></p>
+      <div style="display:flex;gap:6px;justify-content:flex-end">
+        <button class="btn" onclick="closeBook()">Cancel</button>
+        <button class="btn btn-p" style="background:#065f46;border-color:#065f46" onclick="doBookIn()">&#10003; Book in</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="modal-bg" id="expModal">
   <div class="modal-box sm">
     <div class="mhdr"><h3>&#8659; Export Container Order</h3><button class="mclose" onclick="closeExp()">&times;</button></div>
@@ -570,6 +604,9 @@ body.viewer-mode .view-only{display:block !important}
 // ── State ──────────────────────────────────────────────────────────────────
 var _uidSeq = 1;
 var rows = [], cPOs = [], bookedPOs = [], sortCol = 'weeksOfCover', sortAsc = true;
+// Clockwork's USD price per garment, pasted from the container order template's Data tab. Kept in
+// this browser's saved state only: it is never published, so the view-only page has no prices.
+var ckwPrices = {}, ckwPricesAt = '';
 var openPOMonths = {};
 var selectedBookedPO = null;
 var delayedItems = {};  // key 'poRef|code' -> true when a PO line is flagged delayed (what-if)
@@ -1139,20 +1176,109 @@ function delPO(idx){
   saveState();
 }
 
+// ── Clockwork prices (USD per garment) ──────────────────────────────────────
+// The editor pastes the Data tab of the container order template (code in the
+// first column, the Clockwork price in the last). Prices stay in this
+// browser's saved state and are left out of what is published, so viewers
+// never see them. A container's value is its units × price, line by line.
+function priceCount(){ return Object.keys(ckwPrices).length; }
+function ckwPriceFor(code){ var p=ckwPrices[(code||'').trim().toUpperCase()]; return p>0?p:null; }
+function containerValue(items){
+  var v=0, priced=0, unpriced=[];
+  (items||[]).forEach(function(it){ var p=ckwPriceFor(it.code); if(p!=null){ v+=(it.qty||0)*p; priced++; } else if(it.qty>0) unpriced.push(it.code); });
+  return {value:Math.round(v*100)/100, priced:priced, unpriced:unpriced, lines:(items||[]).length};
+}
+// A typed USD amount: blank is null, anything that is not a number is NaN
+function parseUSD(s){ s=(s||'').toString().trim().replace(/^\$/,'').replace(/[,\s]/g,''); if(s==='') return null; return /^-?\d*\.?\d+$/.test(s)?parseFloat(s):NaN; }
+function fUSD(v){ return v==null?'':'$'+Number(v).toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function parsePrices(txt){
+  var out={}, n=0;
+  (txt||'').split('\n').forEach(function(line){
+    var parts=line.split('\t').map(function(x){ return (x||'').trim(); }).filter(function(x){ return x!==''; });
+    if(parts.length<2) return;
+    var code=parts[0].toUpperCase();
+    if(!code||code==='CODE'||code==='TIBARD STOCK CODE') return;
+    var price=null;
+    for(var i=parts.length-1;i>=1;i--){ var p=parseFloat(parts[i].replace(/[$£,\s]/g,'')); if(!isNaN(p)&&p>0&&/^[$£]?\s*[0-9.,]+$/.test(parts[i])){ price=p; break; } }
+    if(price==null) return;
+    out[code]=Math.round(price*10000)/10000; n++;
+  });
+  return {prices:out, n:n};
+}
+function savePrices(){ if(!IS_EDITOR) return;
+  var ta=document.getElementById('priceTA'), r=parsePrices(ta?ta.value:'');
+  if(!r.n){ alert('No prices found.\n\nSelect the Data tab\'s columns from the stock code through to the Clockwork price (row 2 down), Ctrl+C, and paste here.'); return; }
+  Object.keys(r.prices).forEach(function(k){ ckwPrices[k]=r.prices[k]; });
+  ckwPricesAt=new Date().toISOString();
+  if(ta) ta.value='';
+  renderPrices(); renderPOCards(); renderBookedPOs(); saveState();
+}
+function clearPrices(){ if(!IS_EDITOR) return;
+  if(!confirm('Remove all '+priceCount()+' Clockwork prices from this PC?')) return;
+  ckwPrices={}; ckwPricesAt='';
+  renderPrices(); renderPOCards(); renderBookedPOs(); saveState();
+}
+function renderPrices(){
+  var el=document.getElementById('priceStatus'); if(!el) return;
+  var n=priceCount();
+  el.innerHTML=n?('<strong>'+n+'</strong> codes priced'+(ckwPricesAt?' &middot; pasted '+fmtD(ckwPricesAt):'')+' &middot; kept on this PC only, never published'):'<span style="color:#92400e">No prices on this PC yet.</span> Paste the template\'s Data tab below to value containers and price exports.';
+  var sub=document.getElementById('priceSub'); if(sub) sub.textContent=n?'('+n+')':'';
+}
+
 // ── Booked-in container history ─────────────────────────────────────────────
+// Booking in opens a small box with the container's value in USD, worked out
+// from the price list and open to change, and that value is kept on the
+// container (it is published, so the KPI dashboard can read it; the view-only
+// page does not show it).
+var bookPending=null;
 function bookInPO(idx){
   if(typeof IS_EDITOR!=='undefined' && !IS_EDITOR) return;
   var po=cPOs[idx];
   if(!po) return;
-  if(!confirm('Mark container "'+po.ref+'" as booked in?\n\nIt will move from the tracker into the Booked-In Containers history.')) return;
+  bookPending=idx;
+  var cv=containerValue(po.items), tot=Math.round(po.items.reduce(function(s,it){return s+it.qty;},0));
+  document.getElementById('bookRef').textContent=po.ref;
+  document.getElementById('bookSum').innerHTML='<strong>'+po.items.length+'</strong> SKUs &nbsp;|&nbsp; <strong>'+tot.toLocaleString()+'</strong> units &nbsp;|&nbsp; arrived '+fmtD(po.date);
+  var inp=document.getElementById('bookUSD'); inp.value=cv.priced?cv.value.toFixed(2):'';
+  var hint;
+  if(!priceCount()) hint='No price list on this PC. Type the container\'s value, or leave it blank and add it later from the booked card.';
+  else if(cv.unpriced.length) hint=cv.priced+' of '+cv.lines+' lines priced from the list. No price for: '+esc(cv.unpriced.slice(0,6).join(', '))+(cv.unpriced.length>6?' and '+(cv.unpriced.length-6)+' more':'')+'. Adjust the value if you know it.';
+  else hint='From the price list: every line priced. Change it if the invoice says otherwise.';
+  document.getElementById('bookHint').innerHTML=hint;
+  document.getElementById('bookModal').classList.add('open');
+  setTimeout(function(){ inp.focus(); inp.select(); },50);
+}
+function closeBook(){ document.getElementById('bookModal').classList.remove('open'); bookPending=null; }
+function doBookIn(){
+  if(typeof IS_EDITOR!=='undefined' && !IS_EDITOR) return;
+  var po=cPOs[bookPending];
+  if(!po){ closeBook(); return; }
+  var raw=(document.getElementById('bookUSD').value||'').trim(), v=parseUSD(raw);
+  if(raw!=='' && (v==null||isNaN(v)||v<0)){ alert('Enter the value in USD as a number, or leave it blank.'); return; }
+  var cv=containerValue(po.items);
   clearDelaysFor(po.ref);
-  // Stamp with the date booked in
+  // Stamp with the date booked in, and the value
   po.bookedDate=d2s(now());
+  if(v==null){ delete po.valueUSD; delete po.valueUSDFrom; delete po.valueUSDAt; }
+  else { po.valueUSD=Math.round(v*100)/100; po.valueUSDFrom=(cv.priced&&Math.abs(po.valueUSD-cv.value)<0.005)?'prices':'typed'; po.valueUSDAt=new Date().toISOString(); }
   bookedPOs.push(po);
-  cPOs.splice(idx,1);
+  cPOs.splice(bookPending,1);
   if(selectedPO===po.ref) selectedPO=null;
+  closeBook();
   recalcContainers(); recalcQtys(); updateStats(); renderTable(); renderPOCards(); renderProj(); renderRW(); updateCapSum(); renderBookedPOs();
   saveState();
+}
+// The value on a booked container can be put right later (editor only)
+function editBookedValue(i){
+  if(typeof IS_EDITOR!=='undefined' && !IS_EDITOR) return;
+  var po=bookedPOs[i]; if(!po) return;
+  var cv=containerValue(po.items);
+  var t=prompt('Value of '+po.ref+' in USD'+(cv.priced?' (the price list gives '+fUSD(cv.value)+')':'')+'. Leave blank to clear it.', po.valueUSD!=null?po.valueUSD.toFixed(2):(cv.priced?cv.value.toFixed(2):''));
+  if(t===null) return;
+  t=t.trim();
+  if(t===''){ delete po.valueUSD; delete po.valueUSDFrom; delete po.valueUSDAt; }
+  else { var v=parseUSD(t); if(v==null||isNaN(v)||v<0){ alert('Enter the value in USD as a number.'); return; } po.valueUSD=Math.round(v*100)/100; po.valueUSDFrom=(cv.priced&&Math.abs(po.valueUSD-cv.value)<0.005)?'prices':'typed'; po.valueUSDAt=new Date().toISOString(); }
+  renderBookedPOs(); saveState();
 }
 
 function undoBookPO(i){
@@ -1160,7 +1286,7 @@ function undoBookPO(i){
   var po=bookedPOs[i];
   if(!po) return;
   if(!confirm('Move container "'+po.ref+'" back into the active PO tracker?')) return;
-  delete po.bookedDate;
+  delete po.bookedDate; delete po.valueUSD; delete po.valueUSDFrom; delete po.valueUSDAt;
   cPOs.push(po);
   bookedPOs.splice(i,1);
   recalcContainers(); recalcQtys(); updateStats(); renderTable(); renderPOCards(); renderProj(); renderRW(); updateCapSum(); renderBookedPOs();
@@ -1182,23 +1308,30 @@ function toggleBookedPO(ref){
 
 // Build the contents table for a booked container
 function bookedPOContentsHTML(po){
+  var showPrices=IS_EDITOR&&priceCount()>0;
   var rowsH=po.items.map(function(it){
     var r=rows.find(function(x){return x.code===it.code;});
     var desc=r?r.desc:'';
+    var p=showPrices?ckwPriceFor(it.code):null;
     return '<tr>'
       +'<td style="font-family:monospace;font-size:11px">'+esc(it.code)+'</td>'
       +'<td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(desc)+'">'+esc(desc)+'</td>'
       +'<td style="text-align:right;font-weight:700">'+Math.round(it.qty).toLocaleString()+'</td>'
+      +(showPrices?'<td style="text-align:right">'+(p!=null?fUSD(p):'<span style="color:#92400e" title="No price in the list">?</span>')+'</td><td style="text-align:right">'+(p!=null?fUSD(p*it.qty):'')+'</td>':'')
       +'</tr>';
   }).join('');
   var tot=Math.round(po.items.reduce(function(s,it){return s+it.qty;},0));
+  var cv=containerValue(po.items);
+  var valueRow=IS_EDITOR?'<tr><td colspan="'+(showPrices?4:2)+'" style="text-align:right;font-weight:700">Value (USD)</td><td style="text-align:right;font-weight:700;color:#065f46">'+(po.valueUSD!=null?fUSD(po.valueUSD):'<span style="color:#92400e">not set</span>')+'</td></tr>'
+    +(showPrices&&po.valueUSD!=null&&Math.abs(po.valueUSD-cv.value)>=0.005?'<tr><td colspan="'+(showPrices?4:2)+'" style="text-align:right;font-size:11px;color:#6b7280">Price list gives</td><td style="text-align:right;font-size:11px;color:#6b7280">'+fUSD(cv.value)+(cv.unpriced.length?' ('+cv.unpriced.length+' unpriced)':'')+'</td></tr>':''):'';
   return '<div style="background:#fff;border:1px solid #a7d4bb;border-radius:7px;margin:6px 0 10px;overflow:hidden">'
     +'<div style="background:#065f46;color:#fff;padding:8px 12px;font-size:12px;font-weight:600">&#10003; '+esc(po.ref)+' — contents (booked in '+fmtD(po.bookedDate)+')</div>'
     +'<div style="overflow-x:auto;-webkit-overflow-scrolling:touch">'
     +'<table class="ptbl" style="width:100%"><thead><tr>'
-    +'<th style="text-align:left">SKU</th><th style="text-align:left">Description</th><th style="text-align:right">Qty</th>'
+    +'<th style="text-align:left">SKU</th><th style="text-align:left">Description</th><th style="text-align:right">Qty</th>'+(showPrices?'<th style="text-align:right">Price $</th><th style="text-align:right">Total $</th>':'')
     +'</tr></thead><tbody>'+rowsH
-    +'<tr style="border-top:2px solid #dde3ed"><td colspan="2" style="text-align:right;font-weight:700">Total units</td><td style="text-align:right;font-weight:700;color:#065f46">'+tot.toLocaleString()+'</td></tr>'
+    +'<tr style="border-top:2px solid #dde3ed"><td colspan="2" style="text-align:right;font-weight:700">Total units</td><td style="text-align:right;font-weight:700;color:#065f46">'+tot.toLocaleString()+'</td>'+(showPrices?'<td></td><td></td>':'')+'</tr>'
+    +valueRow
     +'</tbody></table></div></div>';
 }
 
@@ -1225,6 +1358,7 @@ function renderBookedPOs(){
       +'<div class="poc-date">Arrived: '+fmtD(po.date)+'</div>'
       +'<div class="poc-date" style="color:#065f46;font-weight:600">Booked in: '+fmtD(po.bookedDate)+'</div>'
       +'<div style="font-size:11px;color:#4b5563"><strong>'+po.items.length+'</strong> SKUs | <strong>'+tot.toLocaleString()+'</strong> units</div>'
+      +(IS_EDITOR?'<div class="edit-only" style="font-size:11px;color:#1F3864;margin-top:2px"><strong>'+(po.valueUSD!=null?fUSD(po.valueUSD):'<span style=\'color:#92400e;font-weight:600\'>Value not set</span>')+'</strong>'+(po.valueUSD!=null&&po.valueUSDFrom==='typed'?' <span style="font-size:10px;color:#6b7280">(typed)</span>':'')+' <button class="btn" style="font-size:10px;padding:1px 6px;margin-left:4px" title="Change the value in USD" onclick="event.stopPropagation();editBookedValue('+i+')">&#9998; value</button></div>':'')
       +'<div style="font-size:10px;color:#065f46;margin-top:4px;font-weight:600">'+(isSel?'&#9650; Hide contents':'&#9660; Click to view contents')+'</div>'
       +'<button class="btn edit-only" style="font-size:10px;padding:4px 8px;margin-top:6px;width:100%" onclick="event.stopPropagation();undoBookPO('+i+')">&#8634; Undo booking</button>'
       +'</div>';
@@ -1273,6 +1407,7 @@ function renderPOCards(){
       +'<span class="poc-wks" style="background:'+wbg+'">'+wl+'</span>'
       +'<div style="font-size:11px;color:#4b5563"><strong>'+po.items.length+'</strong> SKUs | <strong>'+tot.toLocaleString()+'</strong> units</div>'
       +'<div style="font-size:11px;color:#4b5563;margin-top:2px">&#128682; '+crtH+'</div>'
+      +(IS_EDITOR&&priceCount()?(function(){ var cv=containerValue(po.items); return '<div class="edit-only" style="font-size:11px;color:#1F3864;margin-top:2px">&asymp; <strong>'+fUSD(cv.value)+'</strong>'+(cv.unpriced.length?' <span style="color:#92400e" title="'+esc(cv.unpriced.join(', '))+'">+'+cv.unpriced.length+' unpriced</span>':'')+'</div>'; })():'')
       +'<div style="font-size:10px;color:#1F3864;margin-top:4px;font-weight:600">'+((selectedPO===po.ref)?'&#9650; Hide details':'&#9660; Click to view contents')+'</div>'
       +'<button class="btn edit-only" style="font-size:10px;padding:4px 8px;margin-top:6px;width:100%;color:#065f46;border-color:#a7d4bb" onclick="event.stopPropagation();bookInPO('+i+')">&#10003; Mark as booked in</button>'
       +'</div>';
@@ -2002,7 +2137,8 @@ function showExport(){
   if(!er.length){ alert('No ticked rows with Actual cartons > 0.'); return; }
   var tc=er.reduce(function(s,r){return s+r.actCartons;},0);
   var tu=Math.round(er.reduce(function(s,r){return s+r.actCartons*r.carton;},0));
-  document.getElementById('expSum').innerHTML=er.length+' SKUs &nbsp;|&nbsp; '+fC(tc)+' cartons &nbsp;|&nbsp; '+tu.toLocaleString()+' units';
+  var ev=IS_EDITOR&&priceCount()?containerValue(er.map(function(r){ return {code:r.code, qty:Math.round(r.actCartons*r.carton)}; })):null;
+  document.getElementById('expSum').innerHTML=er.length+' SKUs &nbsp;|&nbsp; '+fC(tc)+' cartons &nbsp;|&nbsp; '+tu.toLocaleString()+' units'+(ev?' &nbsp;|&nbsp; '+fUSD(ev.value)+(ev.unpriced.length?' <span style="color:#92400e">('+ev.unpriced.length+' unpriced)</span>':''):(IS_EDITOR?' &nbsp;|&nbsp; <span style="color:#92400e">no price list on this PC</span>':''));
   var arr=getNextDate(); var disp=nwkday(now(),8);
   document.getElementById('expDisp').value=d2s(disp);
   document.getElementById('expArr').value=d2s(arr);
@@ -2017,15 +2153,18 @@ function doExport(){
   if(!disp||!arr){ alert('Enter dispatch and arrival dates.'); return; }
   var er=rows.filter(function(r){return r.included&&r.actCartons>0;});
   if(!er.length){ alert('No items to export.'); return; }
+  var withPrices=IS_EDITOR&&priceCount()>0;
   var lines=[ref,'Completed Loading By:,'+disp+',Deliver Into Tibard By:,'+arr,'',
-    'Tibard Stock Code,Description,Carton Qty,Cartons,Total Quantity'];
-  var tc=0,tu=0;
+    'Tibard Stock Code,Description,Carton Qty,Cartons,Total Quantity'+(withPrices?',Price,Total Price':'')];
+  var tc=0,tu=0,tv=0;
   er.forEach(function(r){
     var units=Math.round(r.actCartons*r.carton);
     tc+=r.actCartons; tu+=units;
-    lines.push([r.code,'"'+r.desc.replace(/"/g,'')+'"',r.carton,fC(r.actCartons),units].join(','));
+    var row=[r.code,'"'+r.desc.replace(/"/g,'')+'"',r.carton,fC(r.actCartons),units];
+    if(withPrices){ var p=ckwPriceFor(r.code); if(p!=null){ tv+=units*p; row.push(p.toFixed(2), (units*p).toFixed(2)); } else row.push('',''); }
+    lines.push(row.join(','));
   });
-  lines.push(['"TOTALS"','','',fC(tc),tu].join(','));
+  lines.push(['"TOTALS"','','',fC(tc),tu].concat(withPrices?['',tv.toFixed(2)]:[]).join(','));
   var blob=new Blob([lines.join('\n')],{type:'text/csv;charset=utf-8;'});
   var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
   a.download=ref.replace(/\s+/g,'_')+'_'+new Date().toISOString().slice(0,10)+'.csv'; a.click();
@@ -2052,15 +2191,18 @@ function doAirExport(){
   if(!byDate){ alert('Enter a required-by date.'); return; }
   var er=rows.filter(function(r){return r.included&&r.actAir>0;});
   if(!er.length){ alert('No items to export.'); return; }
+  var withPrices=IS_EDITOR&&priceCount()>0;
   var lines=[ref+' (AIR FREIGHT)','Required By:,'+byDate,'',
-    'Tibard Stock Code,Description,Carton Qty,Cartons,Total Quantity'];
-  var tc=0,tu=0;
+    'Tibard Stock Code,Description,Carton Qty,Cartons,Total Quantity'+(withPrices?',Price,Total Price':'')];
+  var tc=0,tu=0,tv=0;
   er.forEach(function(r){
     var cartons=Math.round((r.actAir/r.carton)*100)/100;
     tc+=cartons; tu+=r.actAir;
-    lines.push([r.code,'"'+r.desc.replace(/"/g,'')+'"',r.carton,fC(cartons),r.actAir].join(','));
+    var row=[r.code,'"'+r.desc.replace(/"/g,'')+'"',r.carton,fC(cartons),r.actAir];
+    if(withPrices){ var p=ckwPriceFor(r.code); if(p!=null){ tv+=r.actAir*p; row.push(p.toFixed(2), (r.actAir*p).toFixed(2)); } else row.push('',''); }
+    lines.push(row.join(','));
   });
-  lines.push(['"TOTALS"','','',fC(Math.round(tc*100)/100),tu].join(','));
+  lines.push(['"TOTALS"','','',fC(Math.round(tc*100)/100),tu].concat(withPrices?['',tv.toFixed(2)]:[]).join(','));
   var blob=new Blob([lines.join('\n')],{type:'text/csv;charset=utf-8;'});
   var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
   a.download=ref.replace(/\s+/g,'_')+'_AIR_'+new Date().toISOString().slice(0,10)+'.csv'; a.click();
@@ -2573,7 +2715,7 @@ function dbSave(){ clearTimeout(saveTimer); saveTimer=setTimeout(saveState,1200)
 function saveState(){
   var json='';
   try{
-    json=JSON.stringify({rows:rows,cPOs:cPOs,bookedPOs:bookedPOs,nextContDate:nextContDate,customerMaps:customerMaps,containerAliases:containerAliases,oneOffs:oneOffs,salesHist:salesHist,savedAt:new Date().toISOString()}, stripInHouse);
+    json=JSON.stringify({rows:rows,cPOs:cPOs,bookedPOs:bookedPOs,nextContDate:nextContDate,customerMaps:customerMaps,containerAliases:containerAliases,oneOffs:oneOffs,salesHist:salesHist,ckwPrices:ckwPrices,ckwPricesAt:ckwPricesAt,savedAt:new Date().toISOString()}, stripInHouse);
   }catch(e){ console.log('Save failed:',e); saveFailed('could not serialise'); return; }
   var localOK=false;
   try{ localStorage.setItem('tibard_v5',json); localOK=true; }catch(e){ console.log('localStorage save failed:',e); }
@@ -2595,6 +2737,7 @@ function applyState(s){
     stateLoadedAt=s.savedAt||'';
     if(!s.rows||!s.rows.length) return false;
     rows=s.rows; cPOs=s.cPOs||[]; bookedPOs=s.bookedPOs||[]; ensureUIDs(); nextContDate=s.nextContDate||null; customerMaps=s.customerMaps||{}; containerAliases=s.containerAliases||{}; oneOffs=s.oneOffs||{}; salesHist=s.salesHist||null;
+    ckwPrices=(s.ckwPrices&&typeof s.ckwPrices==='object')?s.ckwPrices:{}; ckwPricesAt=s.ckwPricesAt||''; renderPrices();
     var sa=s.savedAt?new Date(s.savedAt).toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}):'';
     document.getElementById('lastUpdated').textContent='Last saved: '+sa;
     recalcContainers(); recalcQtys(); showData();
@@ -2684,6 +2827,8 @@ document.addEventListener('DOMContentLoaded',function(){
   document.getElementById('rwClose').addEventListener('click',function(){document.getElementById('rwModal').classList.remove('open');});
   document.getElementById('rwModal').addEventListener('click',function(e){if(e.target===this)this.classList.remove('open');});
   document.getElementById('expModal').addEventListener('click',function(e){if(e.target===this)this.classList.remove('open');});
+  document.getElementById('bookModal').addEventListener('click',function(e){if(e.target===this)closeBook();});
+  renderPrices();
   document.getElementById('airModal').addEventListener('click',function(e){if(e.target===this)this.classList.remove('open');});
 });
 </script>
