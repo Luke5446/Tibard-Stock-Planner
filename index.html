@@ -256,6 +256,7 @@ body.viewer-mode .view-only{display:block !important}
     <button class="btn edit-only" style="color:#fff;border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.12);font-size:12px" onclick="pubSetup()" id="pubSetupBtn" title="A GitHub token on this PC lets Publish put data.json straight into the repo">&#9881; Set up this PC</button>
     <button class="btn edit-only" style="color:#fff;border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.12);font-size:12px" onclick="showExport()">&#8659; Export container</button>
     <button class="btn edit-only" style="color:#fff;border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.12);font-size:12px" onclick="showAirExport()">&#9992; Export air freight</button>
+    <button class="btn edit-only" style="color:#fff;border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.12);font-size:12px" onclick="showPrices()" id="priceBtn" title="Clockwork prices in USD: paste the template's Data tab once a year or when new bought-in products are added">&#128178; Price list</button>
     <button class="btn edit-only" style="color:#fff;border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.12);font-size:12px" onclick="clearAll()">&#128465; Clear</button>
   </div>
 </header>
@@ -370,21 +371,6 @@ body.viewer-mode .view-only{display:block !important}
             </tr></thead><tbody id="projBody"></tbody></table>
           </div>
           <p class="foot">Proj stock = Free − (weekly use × weeks away) + earlier PO arrivals + container qty. Need next PO = units for 12 wks cover from arrival.<span class="edit-only"> Click &#9998; Edit quantities to change what's on this container — edits only apply when you press Save (0 removes a line).</span></p>
-        </div>
-      </div>
-    </div>
-
-    <!-- Clockwork prices (editor only; never published) -->
-    <div class="panel edit-only">
-      <div class="ph" onclick="togglePB('pricePB')"><h2>&#128178; Clockwork prices <span id="priceSub" style="font-size:11px;opacity:.75"></span></h2><span class="sub">USD per garment &nbsp;|&nbsp; Click to expand</span></div>
-      <div class="pb" id="pricePB">
-        <div id="priceStatus" style="font-size:12px;color:#4b5563;margin-bottom:8px"></div>
-        <p style="font-size:11px;color:#4b5563;margin-bottom:5px">From the container order template, Data tab: select from <code>Tibard Stock Code</code> across to <code>Clockwork Price ($)</code>, row 2 down &rarr; Ctrl+C &rarr; paste below. Pasting again updates the codes it covers and keeps the rest.</p>
-        <textarea id="priceTA" placeholder="Paste stock code … price rows here"></textarea>
-        <div style="display:flex;gap:6px;flex-wrap:wrap">
-          <button class="btn btn-p" style="font-size:12px" onclick="savePrices()">&#10003; Save prices</button>
-          <button class="btn" style="font-size:12px" onclick="clearPrices()">&#128465; Clear prices</button>
-          <span style="font-size:11px;color:#6b7280;margin-left:auto">Used to value a container when it is booked in and to put Price and Total Price on exports. Never shown on the view-only page.</span>
         </div>
       </div>
     </div>
@@ -524,6 +510,27 @@ body.viewer-mode .view-only{display:block !important}
 </div>
 
 <!-- Export modal -->
+<!-- Clockwork price list (editor only; never published) -->
+<div class="modal-bg" id="priceModal">
+  <div class="modal-box sm" style="width:min(640px,96vw)">
+    <div class="mhdr"><h3>&#128178; Clockwork price list <span style="font-weight:400;opacity:.8;font-size:12px">USD per garment</span></h3><button class="mclose" onclick="closePrices()">&times;</button></div>
+    <div class="mbody">
+      <div id="priceStatus" style="font-size:12px;color:#4b5563;margin-bottom:8px"></div>
+      <div id="priceActions" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px"></div>
+      <p style="font-size:11px;color:#4b5563;margin-bottom:5px">From the container order template, Data tab: select from <code>Tibard Stock Code</code> across to <code>Clockwork Price ($)</code>, row 2 down &rarr; Ctrl+C &rarr; paste below &rarr; Save prices. Pasting again updates the codes it covers and keeps the rest, so new bought-in products can be added on their own.</p>
+      <textarea id="priceTA" placeholder="Paste stock code … price rows here" style="width:100%;min-height:120px;font-family:monospace;font-size:11px;padding:7px;border:1px solid #c8d0df;border-radius:5px;margin-bottom:8px"></textarea>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        <button class="btn btn-p" style="font-size:12px" onclick="savePrices()">&#10003; Save prices</button>
+        <button class="btn" style="font-size:12px" onclick="clearPrices()" title="Remove the prices and passphrase from this PC; the saved copy in the repo stays">&#128465; Clear from this PC</button>
+        <button class="btn" style="font-size:12px" onclick="clearPricesEverywhere()" title="Clear the prices from this PC and the saved copy in the repo">&#9888; Clear everywhere</button>
+        <button class="btn" style="font-size:12px" onclick="setPricePw()" id="pricePwBtn" title="The passphrase that locks the saved copy of the prices in the repo">&#128273; Passphrase</button>
+        <button class="btn" style="font-size:12px;margin-left:auto" onclick="closePrices()">Close</button>
+      </div>
+      <p style="font-size:11px;color:#6b7280;margin:10px 0 0">Used to value a container when it is booked in and to put Price and Total Price on exports. Never shown on the view-only page.</p>
+    </div>
+  </div>
+</div>
+
 <!-- Book in a container, with its value in USD -->
 <div class="modal-bg" id="bookModal">
   <div class="modal-box sm">
@@ -1016,9 +1023,15 @@ function delPO(idx){
 
 // ── Clockwork prices (USD per garment) ──────────────────────────────────────
 // The editor pastes the Data tab of the container order template (code in the
-// first column, the Clockwork price in the last). Prices stay in this
-// browser's saved state and are left out of what is published, so viewers
-// never see them. A container's value is its units × price, line by line.
+// first column, the Clockwork price in the last). The prices are kept in this
+// browser (their own store, so Clear all saved data leaves them alone) and,
+// locked with a passphrase, in prices.json in the repo, so a cleared browser
+// or another PC gets them back with the passphrase. They are never in
+// data.json and the view-only page never reads them. A container's value is
+// its units × price, line by line.
+var PRICES_FILE='prices.json', PRICES_LS='tibard_ckw_prices', PRICES_PW_LS='tibard_ckw_pw';
+var ckwPricesRepoAt='';   // savedAt of the repo copy that matches what is on this PC
+var ckwRepo={state:'unknown', savedAt:'', n:0};  // what the last look at prices.json found
 function priceCount(){ return Object.keys(ckwPrices).length; }
 function ckwPriceFor(code){ var p=ckwPrices[(code||'').trim().toUpperCase()]; return p>0?p:null; }
 function containerValue(items){
@@ -1046,21 +1059,298 @@ function parsePrices(txt){
 function savePrices(){ if(!IS_EDITOR) return;
   var ta=document.getElementById('priceTA'), r=parsePrices(ta?ta.value:'');
   if(!r.n){ alert('No prices found.\n\nSelect the Data tab\'s columns from the stock code through to the Clockwork price (row 2 down), Ctrl+C, and paste here.'); return; }
+  var locked=ckwRepo.state==='locked';
+  if(locked && !confirm('The repo holds a copy ('+ckwRepo.n+' codes, '+fmtD(ckwRepo.savedAt)+') that this PC has not opened. Saving now replaces it with the prices on this PC plus this paste.\n\nOK to go on. Cancel to Unlock it first (the paste stays in the box).')) return;
   Object.keys(r.prices).forEach(function(k){ ckwPrices[k]=r.prices[k]; });
-  ckwPricesAt=new Date().toISOString();
+  priceGen++; ckwPricesAt=priceStamp();
   if(ta) ta.value='';
-  renderPrices(); renderPOCards(); renderBookedPOs(); saveState();
+  pricesLocalSave(); renderPrices(); renderPOCards(); renderBookedPOs();
+  pricesPush({confirmed:locked});
 }
+// Clear from this PC only: prices and passphrase go, the repo copy stays for
+// another PC (or this one, with Unlock)
 function clearPrices(){ if(!IS_EDITOR) return;
-  if(!confirm('Remove all '+priceCount()+' Clockwork prices from this PC?')) return;
-  ckwPrices={}; ckwPricesAt='';
-  renderPrices(); renderPOCards(); renderBookedPOs(); saveState();
-}
-function renderPrices(){
-  var el=document.getElementById('priceStatus'); if(!el) return;
   var n=priceCount();
-  el.innerHTML=n?('<strong>'+n+'</strong> codes priced'+(ckwPricesAt?' &middot; pasted '+fmtD(ckwPricesAt):'')+' &middot; kept on this PC only, never published'):'<span style="color:#92400e">No prices on this PC yet.</span> Paste the template\'s Data tab below to value containers and price exports.';
-  var sub=document.getElementById('priceSub'); if(sub) sub.textContent=n?'('+n+')':'';
+  if(!n){ alert('There are no prices on this PC.'); return; }
+  if(!confirm('Remove the '+n+' Clockwork prices from this PC?\n\nThe saved copy in the repo stays. The passphrase is removed from this PC too, so a handed-over PC holds nothing; another PC, or this one with Unlock, gets the prices back.')) return;
+  priceGen++; ckwPrices={}; ckwPricesAt=''; ckwPricesRepoAt=''; storePw('');
+  pricesLocalSave(); renderPrices(); renderPOCards(); renderBookedPOs();
+  pricesSync();
+}
+// Clear everywhere: this PC and the saved copy in the repo
+function clearPricesEverywhere(){ if(!IS_EDITOR) return;
+  if(!priceCount() && !ckwRepo.n && ckwRepo.state!=='locked'){ alert('There are no prices on this PC or in the repo.'); return; }
+  if(!confirm('Clear the Clockwork prices from this PC and the saved copy in the repo?\n\nNo PC will get them back; the Data tab will have to be pasted again.')) return;
+  pricesPush({clear:true, confirmed:true});
+}
+function showPrices(){ if(!IS_EDITOR) return; renderPrices(); document.getElementById('priceModal').classList.add('open'); setTimeout(function(){ var ta=document.getElementById('priceTA'); if(ta) ta.focus(); },50); }
+function closePrices(){ document.getElementById('priceModal').classList.remove('open'); }
+function renderPrices(){
+  var el=document.getElementById('priceStatus'); if(!el||!IS_EDITOR) return;
+  var n=priceCount(), pw=!!pricePw(), inRepo=!!ckwPricesRepoAt&&ckwPricesRepoAt===ckwPricesAt;
+  var amber='<span style="color:#92400e">', green='<span style="color:#065f46">';
+  var h, acts='', warn=false;
+  var saveBtn='<button class="btn" style="font-size:11px" onclick="pricesPush()">&#128228; Save to repo</button>';
+  var checkBtn='<button class="btn" style="font-size:11px" onclick="pricesSync(true)">&#8635; Check the repo</button>';
+  var unlockBtn='<button class="btn btn-p" style="font-size:11px" onclick="unlockPrices()">&#128275; Unlock with the passphrase</button>';
+  var repoCopy='('+ckwRepo.n+' codes, '+fmtD(ckwRepo.savedAt)+')';
+  if(n){
+    h='<strong>'+n+'</strong> codes priced'+(ckwPricesAt?' &middot; saved '+fmtD(ckwPricesAt):'');
+    if(inRepo) h+=' &middot; '+green+'saved in the repo, locked with the passphrase</span>';
+    else if(ckwRepo.state==='pushing') h+=' &middot; saving to the repo&hellip;';
+    else if(ckwRepo.state==='locked'){ warn=true; h+='.<br>'+amber+'The repo holds a copy '+repoCopy+' this PC has not opened'+(pw?' (the passphrase on this PC does not open it)':'')+'.</span> Unlock takes it onto this PC; Save to repo replaces it with the prices on this PC.'; acts+=unlockBtn+saveBtn; }
+    else if(ckwRepo.state==='downloaded'){ warn=true; h+=' &middot; '+amber+'on this PC only: prices.json was downloaded; upload it to the repo, commit, wait a minute, then Check the repo</span>'; acts+=checkBtn+saveBtn; }
+    else { warn=true; h+=' &middot; '+amber+'on this PC only, not yet saved to the repo</span>'; acts+=saveBtn+checkBtn; }
+  } else {
+    h=amber+'No prices on this PC.</span>';
+    if(ckwRepo.state==='pushing') h+=' Saving to the repo&hellip;';
+    else if(ckwRepo.state==='locked'){ warn=true; h+=' A saved copy '+repoCopy+' is in the repo'+(pw?', but the passphrase on this PC does not open it':'')+'.'; acts+=unlockBtn; }
+    else if(ckwRepo.state==='downloaded'){ warn=true; h+=' An empty prices.json was downloaded: upload it to the repo, commit, wait a minute, then Check the repo.'; acts+=checkBtn; }
+    else if(ckwRepo.state==='unknown') h+=' Checking the repo for a saved copy&hellip;';
+    else if(ckwRepo.state==='error'){ h+=' The repo could not be checked for a saved copy.'; acts+=checkBtn; }
+    else if(ckwRepo.n){ warn=true; h+=' The repo still holds '+ckwRepo.n+' codes '+repoCopy+'.'; acts+=unlockBtn; }
+    else h+=' Paste the template\'s Data tab below to value containers and price exports.';
+  }
+  if(!pw) h+='<br>'+amber+'No passphrase on this PC.</span> One is needed to save the prices to the repo and to open a saved copy.';
+  el.innerHTML=h;
+  var ac=document.getElementById('priceActions'); if(ac){ ac.innerHTML=acts; ac.style.display=acts?'flex':'none'; }
+  var pb=document.getElementById('pricePwBtn'); if(pb) pb.innerHTML=pw?'&#128273; Passphrase (set)':'&#128273; Passphrase';
+  var hb=document.getElementById('priceBtn'); if(hb){ hb.innerHTML='&#128178; Price list'+(n?' ('+n+')':'')+(warn?' <span style="color:#fbbf24" title="Needs attention: open the price list">&#9888;</span>':''); }
+}
+
+// A save's stamp: later than anything this PC knows of, whatever its clock
+function priceStamp(){
+  var now=new Date().toISOString(), m=[ckwPricesAt||'', ckwPricesRepoAt||'', ckwRepo.savedAt||''].sort().pop();
+  if(now>m) return now;
+  var t=Date.parse(m); return isNaN(t)?now:new Date(t+1).toISOString();
+}
+// Bumped by every change to the prices on this PC, so a slow read of the
+// repo never writes over something that changed meanwhile
+var priceGen=0;
+
+// The prices on this PC: their own localStorage key and IndexedDB record.
+// Prices from an older saved state (they used to travel in tibard_v5) are
+// taken over once, only when the own store has never been written.
+var legacyPrices=null;
+function pricesLocalSave(){
+  var json=JSON.stringify({ckwPrices:ckwPrices, ckwPricesAt:ckwPricesAt, ckwPricesRepoAt:ckwPricesRepoAt, kept:true});
+  try{ localStorage.setItem(PRICES_LS, json); }catch(e){}
+  idbSet(json, function(){}, 'prices');
+}
+function pricesApplyLocal(o){
+  if(!o||typeof o!=='object') return false;
+  var at=o.ckwPricesAt||'', cur=ckwPricesAt||'';
+  if(!at||at<cur) return false;
+  if(at===cur && !(o.ckwPricesRepoAt&&!ckwPricesRepoAt)) return false;
+  ckwPrices=(o.ckwPrices&&typeof o.ckwPrices==='object')?o.ckwPrices:{}; ckwPricesAt=at; ckwPricesRepoAt=o.ckwPricesRepoAt||'';
+  return true;
+}
+function pricesLocalLoad(cb){
+  var own=false;
+  try{ var raw=localStorage.getItem(PRICES_LS); if(raw){ var o=JSON.parse(raw); if(o&&typeof o==='object'){ own=true; pricesApplyLocal(o); } } }catch(e){}
+  idbGet(function(json){
+    try{ if(json){ var o2=JSON.parse(json); if(o2&&typeof o2==='object'){ own=true; pricesApplyLocal(o2); } } }catch(e){}
+    if(!own && !ckwPricesAt && legacyPrices && Object.keys(legacyPrices.ckwPrices||{}).length){
+      ckwPrices=legacyPrices.ckwPrices; ckwPricesAt=legacyPrices.ckwPricesAt||new Date().toISOString(); ckwPricesRepoAt='';
+      pricesLocalSave();
+      if(rows.length) saveState();   // rewrites the saved state without the prices
+    }
+    legacyPrices=null;
+    cb();
+  }, 'prices');
+}
+
+// The passphrase that locks the saved copy, kept on this PC like the token
+var PW_MIN=12;
+function pricePw(){ try{ return localStorage.getItem(PRICES_PW_LS)||''; }catch(e){ return ''; } }
+function storePw(t){ try{ if(!t) localStorage.removeItem(PRICES_PW_LS); else localStorage.setItem(PRICES_PW_LS, t); return true; }catch(e){ alert('Could not keep the passphrase in this browser.'); return false; } }
+// Unlock: take the repo copy onto this PC with the passphrase it was saved
+// with. The passphrase is kept only once it has opened the copy; nothing is
+// ever pushed.
+function unlockPrices(){ if(!IS_EDITOR) return;
+  var t=prompt('Type the passphrase the Clockwork prices were saved with (ask whoever saved them).', '');
+  if(t===null) return;
+  t=t.trim(); if(!t) return;
+  pricesSync(true, t);
+}
+// Passphrase button: choose, change or remove the passphrase on this PC.
+// With a locked copy in the repo and no passphrase here, it is an unlock.
+// From a save (opts.forSave) it only ever chooses one, then goes on saving.
+function setPricePw(opts){ if(!IS_EDITOR) return; opts=opts||{};
+  var cur=pricePw();
+  if(!cur && ckwRepo.state==='locked' && !opts.forSave){ unlockPrices(); return; }
+  var msg=opts.forSave?'Choose a passphrase for the Clockwork prices, at least '+PW_MIN+' characters (three or four words is easiest).\n\nIt locks the copy saved in the repo, and is what another PC (or this one after a clear) needs to get the prices back. Anyone who knows it can read the prices, so keep it to the buying team.'
+    :(cur?'The passphrase on this PC opens the saved prices in the repo. Type a new one to change it (the saved copy is re-locked with it), or clear the box to remove it from this PC.':'Choose a passphrase for the Clockwork prices, at least '+PW_MIN+' characters (three or four words is easiest).\n\nIt locks the copy saved in the repo, and is what another PC (or this one after a clear) needs to get the prices back. Anyone who knows it can read the prices, so keep it to the buying team.');
+  var t=prompt(msg, (cur&&!opts.forSave)?'(kept)':'');
+  if(t===null) return;
+  t=t.trim();
+  if(t==='(kept)') return;
+  if(!t){ if(opts.forSave) return; storePw(''); renderPrices(); return; }
+  if(t.length<PW_MIN){ alert('The passphrase needs at least '+PW_MIN+' characters. The locked copy sits in a public repo, so a short one could be guessed.'); return; }
+  if(!storePw(t)) return;
+  if(opts.forSave){ renderPrices(); pricesPush(opts.then||{}); return; }
+  if(ckwRepo.state==='locked'||!priceCount()){ renderPrices(); pricesSync(true); return; }
+  // Re-locking is a new save: the repo copy under the old passphrase is replaced
+  ckwPricesAt=priceStamp(); ckwPricesRepoAt=''; pricesLocalSave(); renderPrices();
+  pricesPush({confirmed:true});
+}
+
+// AES-GCM, key from the passphrase by PBKDF2
+var PW_ITER=600000;
+function pB64(buf){ var u=new Uint8Array(buf), str=''; for(var i=0;i<u.length;i++) str+=String.fromCharCode(u[i]); return btoa(str); }
+function pUnB64(str){ var b=atob(str), u=new Uint8Array(b.length); for(var i=0;i<b.length;i++) u[i]=b.charCodeAt(i); return u; }
+function pricesKey(pw, salt, iter){
+  return crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveKey'])
+    .then(function(k){ return crypto.subtle.deriveKey({name:'PBKDF2', salt:salt, iterations:iter, hash:'SHA-256'}, k, {name:'AES-GCM', length:256}, false, ['encrypt','decrypt']); });
+}
+function pricesEncrypt(pw, obj){
+  var salt=crypto.getRandomValues(new Uint8Array(16)), iv=crypto.getRandomValues(new Uint8Array(12));
+  return pricesKey(pw, salt, PW_ITER).then(function(k){ return crypto.subtle.encrypt({name:'AES-GCM', iv:iv}, k, new TextEncoder().encode(JSON.stringify(obj))); })
+    .then(function(ct){ return {salt:pB64(salt), iv:pB64(iv), ct:pB64(ct), iter:PW_ITER}; });
+}
+function pricesDecrypt(pw, blob){
+  var iter=Number(blob.iter)||250000;
+  return pricesKey(pw, pUnB64(blob.salt), iter).then(function(k){ return crypto.subtle.decrypt({name:'AES-GCM', iv:pUnB64(blob.iv)}, k, pUnB64(blob.ct)); })
+    .then(function(pt){ return JSON.parse(new TextDecoder().decode(pt)); });
+}
+// The outer label of a prices.json: its stamp and count, or null
+function pricesFileLabel(f){ if(!f||typeof f!=='object'||typeof f.ct!=='string'||typeof f.salt!=='string'||typeof f.iv!=='string') return null; return {savedAt:typeof f.savedAt==='string'?f.savedAt:'', n:Number(f.n)||0}; }
+
+// Save the prices to prices.json in the repo, locked with the passphrase.
+// Through the GitHub API with the token on this PC; without a token the file
+// is downloaded to commit by hand, as Publish does. Every push is a fresh
+// save with its own stamp, so other PCs see it as newer. Before writing, the
+// copy the API hands back is compared with the one this PC last saw: a copy
+// saved since (another PC) is never written over without asking.
+var pricesPushBusy=false, pricesPushQueued=null;
+function pricesPush(opts){ if(!IS_EDITOR) return; opts=opts||{};
+  if(pricesPushBusy){ pricesPushQueued=opts; return; }
+  var pw=pricePw();
+  if(!pw||pw.length<PW_MIN){
+    if(!confirm(pw?'The passphrase on this PC is too short to lock a new save. Choose a new one now?':'The prices need a passphrase before they can be saved to the repo. Set one now?')){ renderPrices(); return; }
+    setPricePw({forSave:true, then:opts}); return;
+  }
+  if(!window.crypto||!crypto.subtle){ alert('This browser cannot lock the prices (no Web Crypto), so they stay on this PC only.'); return; }
+  if(ckwRepo.state==='locked' && !opts.confirmed && !confirm('The repo holds a copy ('+ckwRepo.n+' codes, '+fmtD(ckwRepo.savedAt)+') that this PC cannot open.\n\nReplace it with '+(opts.clear?'nothing (clear it)':'the '+priceCount()+' prices on this PC')+'?')){ renderPrices(); return; }
+  var snap=opts.clear?{}:JSON.parse(JSON.stringify(ckwPrices)), n=Object.keys(snap).length;
+  var before={at:ckwPricesAt, repoAt:ckwPricesRepoAt, repo:ckwRepo, gen:priceGen};
+  var at=priceStamp();
+  if(!opts.clear){ ckwPricesAt=at; pricesLocalSave(); }
+  pricesPushBusy=true; ckwRepo={state:'pushing', savedAt:before.repo.savedAt, n:before.repo.n}; renderPrices();
+  var next=function(){ var q=pricesPushQueued; pricesPushQueued=null; if(q) pricesPush(q); };
+  var apply=function(){
+    if(opts.clear){ priceGen++; ckwPrices={}; ckwPricesAt=at; }
+    else if(ckwPricesAt===at) {} else { /* changed again meanwhile: the queued push will carry it */ }
+    ckwPricesRepoAt=at; ckwRepo={state:n?'ok':'empty', savedAt:at, n:n}; pricesLocalSave();
+    renderPrices(); if(opts.clear){ renderPOCards(); renderBookedPOs(); }
+  };
+  var finish=function(ok, err, unseen){ pricesPushBusy=false;
+    if(ok) apply();
+    else {
+      ckwRepo=unseen?{state:'locked', savedAt:unseen.savedAt, n:unseen.n}:before.repo;
+      if(!opts.clear && ckwPricesAt===at && priceGen===before.gen){ ckwPricesAt=before.at; ckwPricesRepoAt=before.repoAt; pricesLocalSave(); }
+      renderPrices();
+      if(unseen) { /* the question was asked and declined */ }
+      else if(err) alert(opts.clear?'The clear could not reach the repo ('+err+'). Nothing was cleared; try again.':'The prices could not be saved to the repo ('+err+'). They are still on this PC; press Save to repo to try again.');
+    }
+    next(); };
+  // What the API hands back before the write: a copy this PC has not seen?
+  var precheck=function(cur){
+    var lab=pricesFileLabel(cur); if(!lab||!lab.savedAt) return true;
+    if(lab.savedAt===before.repoAt) return true;                              // the copy this PC last saw
+    if(opts.confirmed && lab.savedAt===(before.repo.savedAt||'')) return true; // already asked about this one
+    if(confirm('Since this PC last looked, a copy saved '+fmtD(lab.savedAt)+' ('+lab.n+' codes) was put in the repo by another PC.\n\nOK: replace it with this save.\nCancel: keep it. Check the repo then takes it onto this PC (combined with any unsaved prices here), after which Save to repo saves the lot.')) return true;
+    return lab;
+  };
+  pricesEncrypt(pw, {prices:snap, savedAt:at}).then(function(blob){
+    var file=JSON.stringify({v:1, savedAt:at, n:n, kdf:'PBKDF2-SHA256', iter:blob.iter, cipher:'AES-GCM-256', salt:blob.salt, iv:blob.iv, ct:blob.ct}, null, 1);
+    var tok=pubToken();
+    if(!tok){
+      var b=new Blob([file],{type:'application/json'}), a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=PRICES_FILE; a.click();
+      alert(PRICES_FILE+' downloaded.\n\nUpload it to the '+PUB_REPO+' repo (replacing the old one, if any) and commit; a minute later press Check the repo in the price list. Or Set up this PC with a token so the prices are saved there straight from here.');
+      pricesPushBusy=false;
+      if(opts.clear){ priceGen++; ckwPrices={}; ckwPricesAt=at; ckwPricesRepoAt=''; pricesLocalSave(); renderPOCards(); renderBookedPOs(); }
+      ckwRepo={state:'downloaded', savedAt:before.repo.savedAt, n:before.repo.n}; renderPrices(); next(); return;
+    }
+    ghPutFile(PRICES_FILE, file, 'Clockwork prices '+(n?'updated':'cleared')+' '+at.slice(0,16).replace('T',' '), tok, finish, precheck);
+  }).catch(function(e){ finish(false, String(e.message||e)); });
+}
+// Put a file through the GitHub contents API: read its sha (and hand the
+// current content to precheck, which returns true to go on or a label to
+// stop with), put the new one back, read again if GitHub refuses a stale sha.
+function ghPutFile(path, content, message, tok, cb, precheck){
+  var api='https://api.github.com/repos/'+PUB_REPO+'/contents/'+path;
+  var headers={'Authorization':'Bearer '+tok,'Accept':'application/vnd.github+json'};
+  var attempt=function(k){
+    fetch(api+'?t='+Date.now(), {headers:headers, cache:'no-store'})
+      .then(function(r){ if(r.status===404) return {sha:null}; if(!r.ok) throw new Error('GitHub said '+r.status+(r.status===401?' (token refused)':r.status===403?' (token cannot write this repo)':'')); return r.json(); })
+      .then(function(j){
+        if(precheck && j && typeof j.content==='string'){
+          var cur=null; try{ cur=JSON.parse(decodeURIComponent(escape(atob(j.content.replace(/\s/g,''))))); }catch(e){ cur=null; }
+          var ok=precheck(cur); if(ok!==true){ cb(false, null, ok); return null; }
+        }
+        var body={message:message, content:pubB64(content)}; if(j.sha) body.sha=j.sha;
+        return fetch(api, {method:'PUT', headers:Object.assign({'Content-Type':'application/json'}, headers), body:JSON.stringify(body)}); })
+      .then(function(r){ if(r===null) return; if((r.status===409||r.status===422)&&k<3){ attempt(k+1); return; } if(!r.ok) throw new Error('GitHub refused the save ('+r.status+')'); cb(true); })
+      .catch(function(e){ cb(false, String(e.message||e)); });
+  };
+  attempt(1);
+}
+
+// Read prices.json from the site (no token needed) at the editor's start,
+// from Check the repo, and from Unlock (with the passphrase just typed). A
+// copy this PC has not seen is taken when the passphrase opens it and its
+// label matches what is inside; unsaved prices on this PC are combined with
+// it rather than lost. An unlock takes the copy even when it is older.
+function pricesSync(tellMe, candidate){ if(!IS_EDITOR) return;
+  var gen=priceGen, unlock=typeof candidate==='string', was=ckwRepo.state;
+  fetch(PRICES_FILE+'?t='+Date.now(), {cache:'no-store'}).then(function(r){
+    if(r.status===404) return null;
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    return r.text();
+  }).then(function(txt){
+    if(txt===null){ ckwRepo={state:was==='downloaded'?'downloaded':'none', savedAt:'', n:0}; renderPrices();
+      if(tellMe) alert(priceCount()?'The repo shows no saved copy yet. If you have just uploaded prices.json, wait a minute and check again; otherwise press Save to repo.':'There is no saved copy of the prices in the repo yet. Paste the Data tab and Save prices.'); return; }
+    var f=null; try{ f=JSON.parse(txt); }catch(e){ f=null; }
+    var lab=pricesFileLabel(f); if(!lab) throw new Error(PRICES_FILE+' is not a saved copy');
+    var savedAt=lab.savedAt, n=lab.n;
+    ckwRepo={state:'locked', savedAt:savedAt, n:n};
+    var seen=!!savedAt&&savedAt===ckwPricesRepoAt, own=!!savedAt&&savedAt===ckwPricesAt, newer=savedAt>(ckwPricesAt||'');
+    if(seen||own){
+      if(own&&!seen){ ckwPricesRepoAt=ckwPricesAt; pricesLocalSave(); }
+      ckwRepo.state=n?'ok':'empty'; renderPrices();
+      if(tellMe) alert(priceCount()?'The prices on this PC are the ones in the repo.':'The saved copy in the repo has no prices (they were cleared).');
+      return;
+    }
+    if(!newer && !unlock){
+      // Older than this PC's prices and not this PC's save: leave it be
+      ckwRepo.state=was==='downloaded'?'downloaded':(n?'ok':'empty'); renderPrices();
+      if(tellMe) alert(priceCount()?'The repo shows an older copy ('+n+' codes, '+fmtD(savedAt)+') than the prices on this PC. If you have just uploaded prices.json, wait a minute and check again; otherwise press Save to repo.':(n?'The repo still holds '+n+' codes from '+fmtD(savedAt)+'. Unlock takes them back onto this PC; Clear everywhere clears them there too.':'The saved copy in the repo has no prices (they were cleared).'));
+      return;
+    }
+    var pw=unlock?candidate:pricePw();
+    if(!pw){ renderPrices(); if(tellMe) alert('A saved copy ('+n+' codes, '+fmtD(savedAt)+') is in the repo. Unlock it with the passphrase it was saved with.'); return; }
+    if(!window.crypto||!crypto.subtle) throw new Error('no Web Crypto');
+    var unsaved=priceCount()>0&&ckwPricesRepoAt!==ckwPricesAt;
+    if(unlock && !newer && priceCount() && !unsaved && !confirm('Replace the '+priceCount()+' prices on this PC with the repo copy ('+n+' codes, '+fmtD(savedAt)+')?')){ ckwRepo.state=n?'ok':'empty'; renderPrices(); return; }
+    return pricesDecrypt(pw, f).then(function(o){
+      if(!o||typeof o!=='object'||o.savedAt!==savedAt) throw new Error('mismatch');
+      if(gen!==priceGen||pricesPushBusy){ renderPrices(); if(tellMe) alert('The prices on this PC changed while the repo was being read. Check the repo again.'); return; }
+      if(unlock) storePw(candidate);
+      var had=priceCount(), mine=ckwPrices, repo=(o.prices&&typeof o.prices==='object')?o.prices:{};
+      priceGen++;
+      if(unsaved){
+        // Unsaved prices on this PC go on top of the repo copy; the result is a new save to make
+        ckwPrices=Object.assign({}, repo, mine); ckwPricesRepoAt=savedAt; ckwPricesAt=priceStamp(); ckwRepo.state='ok';
+      } else {
+        ckwPrices=repo; ckwPricesAt=savedAt; ckwPricesRepoAt=savedAt; ckwRepo.state=priceCount()?'ok':'empty';
+      }
+      pricesLocalSave(); renderPrices(); renderPOCards(); renderBookedPOs();
+      if(tellMe) alert(unsaved?'The repo copy ('+Object.keys(repo).length+' codes) was combined with the unsaved prices on this PC: '+priceCount()+' codes now. Press Save to repo to save the lot.':(priceCount()?priceCount()+' Clockwork prices restored from the repo.':'The saved copy in the repo has no prices (they were cleared).'));
+      else if(!had&&priceCount()){ var ind=document.getElementById('saveInd'); if(ind){ ind.textContent='✓ Prices restored from the repo'; setTimeout(function(){ ind.textContent=''; },5000); } }
+    }).catch(function(e){ ckwRepo.state='locked'; renderPrices();
+      if(tellMe) alert(String(e&&e.message)==='mismatch'?'The saved copy in the repo does not match its own label, so it was not used. Paste the Data tab again and Save prices to replace it.':(unlock?'That passphrase does not open the saved prices, so it was not kept. Check it with whoever saved them.':'The passphrase on this PC does not open the saved prices. Unlock with the right one, or paste the Data tab again and Save prices to replace the saved copy.')); });
+  }).catch(function(e){ console.log('prices.json:', e); ckwRepo.state='error'; renderPrices(); if(tellMe) alert('The repo could not be checked for a saved copy ('+String(e.message||e)+').'); });
 }
 
 // ── Booked-in container history ─────────────────────────────────────────────
@@ -2523,15 +2813,15 @@ function idbOpen(cb){
     req.onerror=function(){ cb(null); }; req.onblocked=function(){ cb(null); };
   }catch(e){ cb(null); }
 }
-function idbSet(json, cb){
+function idbSet(json, cb, key){
   idbOpen(function(db){ if(!db){ cb(false); return; }
-    try{ var tx=db.transaction(IDB_STORE,'readwrite'); tx.objectStore(IDB_STORE).put(json,'state');
+    try{ var tx=db.transaction(IDB_STORE,'readwrite'); tx.objectStore(IDB_STORE).put(json,key||'state');
          tx.oncomplete=function(){ cb(true); }; tx.onerror=function(){ cb(false); }; tx.onabort=function(){ cb(false); }; }
     catch(e){ cb(false); } });
 }
-function idbGet(cb){
+function idbGet(cb, key){
   idbOpen(function(db){ if(!db){ cb(null); return; }
-    try{ var req=db.transaction(IDB_STORE,'readonly').objectStore(IDB_STORE).get('state');
+    try{ var req=db.transaction(IDB_STORE,'readonly').objectStore(IDB_STORE).get(key||'state');
          req.onsuccess=function(){ cb(req.result||null); }; req.onerror=function(){ cb(null); }; }
     catch(e){ cb(null); } });
 }
@@ -2546,7 +2836,7 @@ function dbSave(){ clearTimeout(saveTimer); saveTimer=setTimeout(saveState,1200)
 function saveState(){
   var json='';
   try{
-    json=JSON.stringify({rows:rows,cPOs:cPOs,bookedPOs:bookedPOs,nextContDate:nextContDate,customerMaps:customerMaps,containerAliases:containerAliases,ckwPrices:ckwPrices,ckwPricesAt:ckwPricesAt,savedAt:new Date().toISOString()}, stripInHouse);
+    json=JSON.stringify({rows:rows,cPOs:cPOs,bookedPOs:bookedPOs,nextContDate:nextContDate,customerMaps:customerMaps,containerAliases:containerAliases,savedAt:new Date().toISOString()}, stripInHouse);
   }catch(e){ console.log('Save failed:',e); saveFailed('could not serialise'); return; }
   var localOK=false;
   try{ localStorage.setItem('tibard_v5',json); localOK=true; }catch(e){ console.log('localStorage save failed:',e); }
@@ -2565,10 +2855,11 @@ function loadState(){
 }
 function applyState(s){
   try{
-    stateLoadedAt=s.savedAt||'';
+    stateLoadedAt=s.savedAt||''; legacyPrices=null;
     if(!s.rows||!s.rows.length) return false;
     rows=s.rows; cPOs=s.cPOs||[]; bookedPOs=s.bookedPOs||[]; ensureUIDs(); nextContDate=s.nextContDate||null; customerMaps=s.customerMaps||{}; containerAliases=s.containerAliases||{};
-    ckwPrices=(s.ckwPrices&&typeof s.ckwPrices==='object')?s.ckwPrices:{}; ckwPricesAt=s.ckwPricesAt||''; renderPrices();
+    // Prices used to travel in this state; pricesLocalLoad takes them over once
+    if(s.ckwPrices&&typeof s.ckwPrices==='object'&&Object.keys(s.ckwPrices).length) legacyPrices={ckwPrices:s.ckwPrices, ckwPricesAt:s.ckwPricesAt||s.savedAt||''};
     var sa=s.savedAt?new Date(s.savedAt).toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}):'';
     document.getElementById('lastUpdated').textContent='Last saved: '+sa;
     recalcContainers(); recalcQtys(); showData();
@@ -2593,10 +2884,12 @@ function loadEditor(){
     // the planner's own data is in.
     if(!haveRows) fetchSharedData(function(){ fetchProductionPlan(); });
     else fetchProductionPlan();
+    // The Clockwork prices: this PC's copy, then a newer one in the repo
+    pricesLocalLoad(function(){ renderPrices(); if(priceCount()){ renderPOCards(); renderBookedPOs(); } pricesSync(); });
   });
 }
 function clearAll(){
-  if(!confirm('Clear all saved data?')) return;
+  if(!confirm('Clear all saved data?\n\n(The Clockwork price list and its passphrase stay on this PC: Price list \u2192 Clear prices removes them.)')) return;
   try{
     localStorage.removeItem('tibard_v5');
     try{ idbOpen(function(db){ if(!db) return; try{ db.transaction(IDB_STORE,'readwrite').objectStore(IDB_STORE).delete('state'); }catch(e){} }); }catch(e){}
@@ -2659,6 +2952,7 @@ document.addEventListener('DOMContentLoaded',function(){
   document.getElementById('rwModal').addEventListener('click',function(e){if(e.target===this)this.classList.remove('open');});
   document.getElementById('expModal').addEventListener('click',function(e){if(e.target===this)this.classList.remove('open');});
   document.getElementById('bookModal').addEventListener('click',function(e){if(e.target===this)closeBook();});
+  document.getElementById('priceModal').addEventListener('click',function(e){if(e.target===this)closePrices();});
   renderPrices();
   document.getElementById('airModal').addEventListener('click',function(e){if(e.target===this)this.classList.remove('open');});
 });

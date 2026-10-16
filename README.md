@@ -38,14 +38,49 @@ so the repo's history holds every version of the plan.
 
 ## Clockwork prices and container values
 
-The editor's page has a **Clockwork prices** panel. Paste the container order
-template's Data tab into it (stock code through to the Clockwork price, row 2
-down) and press **Save prices**. Pasting again updates the codes it covers and
-keeps the rest. The prices are saved in that browser only: they are not
-published in `data.json`, and the view-only page never shows a price, a
-container value or the panel itself.
+**Price list** in the editor's header opens the Clockwork price list. Paste
+the container order template's Data tab into it (stock code through to the
+Clockwork price, row 2 down) and press **Save prices**: once a year when the
+prices change, or when new bought-in products are added, since pasting again
+updates the codes it covers and keeps the rest. The button shows how many
+codes are priced, and a warning sign when the list needs attention. The
+prices are never in `data.json`, and the view-only page never shows a price,
+a container value or the button itself.
 
-With prices on the PC:
+### Where the prices are kept
+
+- **On the editor's PC**, in their own browser store, so **Clear** (all saved
+  data) leaves them alone.
+- **In the repo**, as `prices.json`, locked with a **passphrase** (AES-GCM,
+  key from the passphrase by PBKDF2-SHA256, 600,000 rounds). Save prices puts
+  the file into the repo through the GitHub token on the PC; with no token it
+  downloads the file to upload and commit by hand, after which **Check the
+  repo** in the price list confirms it arrived. The file holds only the
+  ciphertext, the date and the number of codes, so it is unreadable without
+  the passphrase.
+
+The first time, press **Save to repo** (or Save prices) and choose a
+passphrase when asked: at least 12 characters, three or four words is
+easiest. The repo is public, so a short passphrase could be guessed, and
+every version of `prices.json` stays in the repo's history: a passphrase that
+has leaked cannot be taken back by changing it, only kept from new saves.
+**Passphrase** in the price list changes it (the saved copy is re-locked and
+saved again) or removes it from the PC. The passphrase is kept on the PC like
+the token. Anyone who knows it, and the site's address, can read the prices,
+so keep it to the buying team.
+
+When the editor's page opens it reads `prices.json` from the site and, if it
+is newer than the PC's copy and the passphrase on the PC opens it, takes it:
+a cleared browser or a new PC gets the prices back with nothing more than the
+passphrase (the price list offers **Unlock with the passphrase**, which never
+overwrites the repo). An older copy on the site never replaces newer prices
+on the PC; **Save to repo** asks before replacing a newer copy the PC cannot
+open. **Clear prices** removes the prices from the PC and asks whether to
+clear the saved copy too: keep it, and the passphrase is removed from the PC
+as well, so a handed-over PC holds nothing while another PC can still get the
+prices back. **Clear** (all saved data) leaves the price list alone.
+
+### What the prices do
 
 - **Export container** and **Export air freight** add `Price` and `Total
   Price` columns to the CSV, with the total value on the TOTALS row. A line
