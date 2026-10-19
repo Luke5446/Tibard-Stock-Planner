@@ -92,5 +92,16 @@ prices back. **Clear** (all saved data) leaves the price list alone.
   with the plan, so the KPI dashboard reads it for Clockwork stock bought in.
   **✎ value** on a booked card changes it later; undoing a booking clears it.
 
+- **Sage PO file** on a container card makes the purchase order as the file
+  the Sage routine imports from the `B2B_PO_TIB` folder: the routine's own
+  39-column layout, supplier CLO003, order date today, requested date the day
+  the container lands, the reference typed when the file is made as the
+  supplier document number, and every line on its **BULK** code to the Bulk
+  warehouse, since that is where Clockwork's goods land (a code with no BULK
+  item in Sage needs one making first). The unit price is the price list, in
+  USD; a line with no price is left blank and named in the summary. The card
+  notes when the file was made and how many lines were unpriced. Without
+  prices the file can still be made, with every price blank.
+
 Without prices, the book-in box is empty and the value can be typed from the
 invoice, or left blank and added later.
