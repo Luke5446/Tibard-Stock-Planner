@@ -101,10 +101,13 @@ prices back. **Clear** (all saved data) leaves the price list alone.
   whatever Sage holds, goes as itself to Home. Which codes have a BULK item is
   a list in the page (Sage's Bulk stock view of 18 Jun 2026 plus
   WAGHTM016015); the BULK codes are on their way out, so it is not meant to
-  grow. The unit price is the price list, in USD; a line with no price is
-  left blank and named in the summary, which also says how many lines went
-  on BULK and how many on the plain code. The card notes when the file was
-  made. Without prices the file can still be made, with every price blank.
+  grow. The unit price is the price list, in USD. The Sage import fails on
+  a blank price (C128, 19 Oct 2026), so a line with no price on the list is
+  named before the file is made, and again in the summary, to be priced
+  first or filled in by hand; the summary also says how many lines went on
+  BULK and how many on the plain code. The line requested date is left blank,
+  as it was on the C127 file that imported. The card notes when the file was
+  made.
 
 Without prices, the book-in box is empty and the value can be typed from the
 invoice, or left blank and added later.

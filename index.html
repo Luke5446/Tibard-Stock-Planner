@@ -1573,7 +1573,10 @@ function ukDate(ds){ var m=/^(\d{4})-(\d{2})-(\d{2})/.exec(ds||''); return m ? m
 function sageCsvCell(v){ v=(v==null)?'':String(v); return /[",\r\n]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v; }
 function sagePOLine(orderDate, reqDate, docNo, code, qty, price){
   var bulk=sageBulkCode(code), pc=bulk ? (/^BULK/i.test(code) ? code : 'BULK'+code) : code;
-  return ['1','',CKW_ACCOUNT,ukDate(orderDate),ukDate(reqDate),docNo||'','','','1',pc,'',bulk?'Bulk':'Home',qty,price==null?'':price.toFixed(2),'',pc,'','','','','','','','','',ukDate(reqDate),'Despatch Number','','B2B Export Status','N/A','Intercompany Despatch Line ID','','','','','Import','','',''];
+  // LineRequestedDate stays blank: the C127 file that imported had it blank,
+  // and the C128 file that failed (19 Oct 2026) carried it along with two
+  // blank prices; the order's requested date is enough for the routine.
+  return ['1','',CKW_ACCOUNT,ukDate(orderDate),ukDate(reqDate),docNo||'','','','1',pc,'',bulk?'Bulk':'Home',qty,price==null?'':price.toFixed(2),'',pc,'','','','','','','','','','','Despatch Number','','B2B Export Status','N/A','Intercompany Despatch Line ID','','','','','Import','','',''];
 }
 function sagePORows(po, docNo){
   var today=d2s(now()), req=(po.date||'').slice(0,10)||today, unpriced=[], plain=[];
@@ -1591,7 +1594,9 @@ function exportSagePO(i){
   if(typeof IS_EDITOR!=='undefined' && !IS_EDITOR){ alert('View-only mode.'); return; }
   var po=cPOs[i]; if(!po) return;
   if(!po.items||!po.items.some(function(it){ return it&&it.qty>0; })){ alert('Nothing on '+po.ref+' to order.'); return; }
-  if(!priceCount() && !confirm('No Clockwork price list on this PC, so every line will have a blank unit price.\n\nPaste the Data tab into the Clockwork prices panel first, or make the file anyway?')) return;
+  if(!priceCount() && !confirm('No Clockwork price list on this PC, so every line will have a blank unit price, and the Sage import fails on a blank price.\n\nPaste the Data tab into the Clockwork prices panel first, or make the file anyway?')) return;
+  var pre=sagePORows(po,'');
+  if(priceCount() && pre.unpriced.length && !confirm(pre.unpriced.length+' line'+(pre.unpriced.length===1?' has':'s have')+' no price on the list: '+pre.unpriced.slice(0,8).join(', ')+(pre.unpriced.length>8?' and '+(pre.unpriced.length-8)+' more':'')+'.\n\nThe Sage import fails on a blank price (C128, 19 Oct 2026). Add them to the Clockwork prices panel first, or make the file anyway and fill them in by hand?')) return;
   var docNo=prompt('Reference for this purchase order (goes on every line as the supplier document number):', String(po.ref||'').replace(/\s+(revised|addition.*)$/i,'').trim());
   if(docNo===null) return;
   docNo=docNo.trim();
@@ -1604,7 +1609,7 @@ function exportSagePO(i){
   var nb=r.rows.length-r.plain.length, nhsp=r.plain.filter(function(c){ return /^NHSP/i.test(c); }).length, other=r.plain.filter(function(c){ return !/^NHSP/i.test(c); });
   alert(r.rows.length+' line'+(r.rows.length===1?'':'s')+', '+units.toLocaleString()+' units'+(value?', '+fUSD(value):'')+' for '+(docNo||po.ref)+', requested for '+fmtD(po.date)+'.'
     +'\n\n'+nb+' on BULK codes to the Bulk warehouse; '+r.plain.length+' on the plain code to Home'+(nhsp?' ('+nhsp+' NHSP':'')+(other.length?(nhsp?', ':' (')+'no BULK item known for '+other.slice(0,6).join(', ')+(other.length>6?' and '+(other.length-6)+' more':''):'')+((nhsp||other.length)?')':'')+'.'
-    +(r.unpriced.length?'\n\nNo price on the list for '+r.unpriced.length+' line'+(r.unpriced.length===1?'':'s')+' (left blank): '+r.unpriced.slice(0,8).join(', ')+(r.unpriced.length>8?' and '+(r.unpriced.length-8)+' more':'')+'.':'')
+    +(r.unpriced.length?'\n\nNO PRICE for '+r.unpriced.length+' line'+(r.unpriced.length===1?'':'s')+' (left blank - fill these in before the import, it fails on a blank price): '+r.unpriced.slice(0,8).join(', ')+(r.unpriced.length>8?' and '+(r.unpriced.length-8)+' more':'')+'.':'')
     +'\n\nSave '+fname+' into the B2B_PO_TIB folder and the Sage routine imports it as the purchase order.');
 }
 
