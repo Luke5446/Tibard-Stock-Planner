@@ -96,12 +96,15 @@ prices back. **Clear** (all saved data) leaves the price list alone.
   the Sage routine imports from the `B2B_PO_TIB` folder: the routine's own
   39-column layout, supplier CLO003, order date today, requested date the day
   the container lands, the reference typed when the file is made as the
-  supplier document number, and every line on its **BULK** code to the Bulk
-  warehouse, since that is where Clockwork's goods land (a code with no BULK
-  item in Sage needs one making first). The unit price is the price list, in
-  USD; a line with no price is left blank and named in the summary. The card
-  notes when the file was made and how many lines were unpriced. Without
-  prices the file can still be made, with every price blank.
+  supplier document number. A code that has a **BULK** item in Sage goes on
+  its BULK code to the Bulk warehouse; every other code, and every NHSP code
+  whatever Sage holds, goes as itself to Home. Which codes have a BULK item is
+  a list in the page (Sage's Bulk stock view of 18 Jun 2026 plus
+  WAGHTM016015); the BULK codes are on their way out, so it is not meant to
+  grow. The unit price is the price list, in USD; a line with no price is
+  left blank and named in the summary, which also says how many lines went
+  on BULK and how many on the plain code. The card notes when the file was
+  made. Without prices the file can still be made, with every price blank.
 
 Without prices, the book-in box is empty and the value can be typed from the
 invoice, or left blank and added later.
