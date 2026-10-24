@@ -168,6 +168,7 @@ textarea{width:100%;min-height:75px;font-size:11px;font-family:monospace;padding
 .uzone small{font-size:10px;color:#6b7280;line-height:1.5;display:block}
 .foot{font-size:10px;color:#6b7280;margin-top:5px;line-height:1.5}
 .hidden{display:none}
+#poAddLine:not(.hidden){display:flex}
 /* Viewer mode: hide all editing controls */
 body.viewer-mode .edit-only{display:none !important}
 body.viewer-mode #pasteBtn{display:none}
@@ -361,7 +362,17 @@ body.viewer-mode .view-only{display:block !important}
             <button class="btn edit-only" id="poEditBtn" style="font-size:10px;padding:3px 8px" onclick="startPOEdit()">&#9998; Edit quantities</button>
             <button class="btn btn-p edit-only hidden" id="poSaveBtn" style="font-size:10px;padding:3px 8px" onclick="savePOEdits()">&#10003; Save changes</button>
             <button class="btn edit-only hidden" id="poCancelBtn" style="font-size:10px;padding:3px 8px" onclick="cancelPOEdits()">&#10005; Cancel</button>
+            <button class="btn edit-only" id="poAddBtn" style="font-size:10px;padding:3px 8px;color:#065f46;border-color:#a7d4bb" onclick="showPOAddLine()" title="Add a product code to this container">&#43; Add code</button>
             <button class="btn" style="font-size:10px;padding:3px 8px" onclick="selectPO(selectedPO)">&#10005; Close</button>
+          </div>
+          <div id="poAddLine" class="hidden edit-only" style="align-items:center;gap:6px;flex-wrap:wrap;background:#f0fdf4;border:1px solid #a7d4bb;border-radius:6px;padding:7px 10px;margin-bottom:8px;font-size:11px">
+            <strong style="color:#065f46">Add to <span id="poAddRef"></span>:</strong>
+            <input type="text" id="poAddCode" placeholder="Stock code" list="poAddCodes" style="width:170px;padding:4px 7px;border:1px solid #c8d0df;border-radius:4px;font-size:11px;font-family:monospace;text-transform:uppercase" onkeydown="if(event.key==='Enter')document.getElementById('poAddQty').focus()">
+            <datalist id="poAddCodes"></datalist>
+            <input type="text" id="poAddQty" placeholder="Units" inputmode="numeric" style="width:70px;padding:4px 7px;border:1px solid #c8d0df;border-radius:4px;font-size:11px" onkeydown="if(event.key==='Enter')savePOAddLine()">
+            <button class="btn btn-p" style="font-size:10px;padding:3px 8px" onclick="savePOAddLine()">&#10003; Add</button>
+            <button class="btn" style="font-size:10px;padding:3px 8px" onclick="hidePOAddLine()">Cancel</button>
+            <span style="color:#4b5563">A code already on the container has the units added to its line.</span>
           </div>
           <div id="delaySummary" style="display:none;background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;padding:8px 12px;margin-bottom:8px;font-size:12px"></div>
           <div style="overflow-x:auto;border:1px solid #dde3ed;border-radius:7px">
@@ -1616,6 +1627,7 @@ function exportSagePO(i){
 function selectPO(ref){
   selectedPO = (selectedPO===ref) ? null : ref;
   poEditMode=false; pendingPOEdits={};   // discard unsaved edits when switching/closing
+  hidePOAddLine();
   renderPOCards();
   renderProj();
 }
@@ -1714,6 +1726,45 @@ function toggleDelayed(poRef, code, isDelayed){
 function clearDelays(){
   Object.keys(delayedItems).forEach(function(k){ delete delayedItems[k]; });
   renderProj();
+}
+
+// ── Add a code to an existing container ─────────────────────────────────────
+// "+ Add code" in the contents panel (editor only) puts one more line on the
+// selected container: a code and its units. A code already on the container
+// has the units added to its line rather than a second line, since the delay
+// flags and the Sage PO file work per code. A code that is not in the stock
+// data is allowed (it still goes on the PO file and counts in the card's
+// totals) but is named, because the projection list only shows codes it can
+// find in the stock data. Added 24 Oct 2026 (CICJ0193MM01 x 400 on AF129).
+function showPOAddLine(){ if(!IS_EDITOR || !selectedPO) return;
+  var box=document.getElementById('poAddLine'); if(!box) return;
+  document.getElementById('poAddRef').textContent=selectedPO;
+  document.getElementById('poAddCode').value=''; document.getElementById('poAddQty').value='';
+  var dl=document.getElementById('poAddCodes');
+  if(dl && !dl.children.length) dl.innerHTML=rows.map(function(r){ return '<option value="'+esc(r.code)+'">'+esc(r.desc||'')+'</option>'; }).join('');
+  box.classList.remove('hidden');
+  document.getElementById('poAddCode').focus();
+}
+function hidePOAddLine(){ var box=document.getElementById('poAddLine'); if(box) box.classList.add('hidden'); }
+function savePOAddLine(){ if(!IS_EDITOR || !selectedPO) return;
+  var po=cPOs.find(function(p){ return p.ref===selectedPO; });
+  if(!po){ alert('Select a container first.'); return; }
+  var code=(document.getElementById('poAddCode').value||'').trim().toUpperCase();
+  var qty=Math.round(pn(document.getElementById('poAddQty').value));
+  if(!code){ alert('Enter a stock code.'); return; }
+  if(!(qty>0)){ alert('Enter the number of units (a whole number above 0).'); return; }
+  var inStock=rows.some(function(r){ return r.code===code; });
+  if(!inStock && !confirm(code+' is not in the stock data on this page.\n\nIt will go on '+po.ref+' (and on its Sage PO file) but will not show in the projected-stock list until the stock data includes it.\n\nAdd it anyway?')) return;
+  var ex=po.items.find(function(it){ return it.code===code; });
+  if(ex){
+    if(!confirm(code+' is already on '+po.ref+' ('+Math.round(ex.qty).toLocaleString()+' units).\n\nAdd '+qty.toLocaleString()+' more, making '+(Math.round(ex.qty)+qty).toLocaleString()+'?')) return;
+    ex.qty=Math.round(ex.qty)+qty;
+  } else {
+    po.items.push({code:code, qty:qty});
+  }
+  hidePOAddLine();
+  recalcContainers(); recalcQtys(); updateStats(); renderTable(); renderPOCards(); renderProj(); renderRW(); updateCapSum();
+  saveState();
 }
 
 function renderProj(){
