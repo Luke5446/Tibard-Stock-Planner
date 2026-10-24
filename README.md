@@ -119,3 +119,50 @@ prices back. **Clear** (all saved data) leaves the price list alone.
 
 Without prices, the book-in box is empty and the value can be typed from the
 invoice, or left blank and added later.
+
+## Fabric usage (Clockwork's monthly fabric report)
+
+Clockwork send a fabric usage report each month: every cloth they hold for
+us, metres on hand, metres on order with their ETAs, and (column D) the
+styles each cloth is cut for. The **Fabric usage** tab (24 Oct 2026) takes
+that file and sets our own demand against it, so a shortage is seen while a
+container is being planned rather than when Clockwork say so.
+
+- **Import Clockwork report** (editor only): choose the `.xlsx`, or paste
+  the sheet, and give the report's date (it sets the year on ETAs written
+  like "NOV 23"). Columns are read by heading, so their order does not
+  matter; every column headed ETA is read, and "IN PRODUCTION" or "TBC" is
+  kept as a line with no date. Black precure and Teredo black vat dye are
+  interchangeable and shown as one line (`FABRIC_POOLS` in the page).
+- **The table**: cloth, description, colour, in stock, on PO, our demand,
+  free (in stock − demand), after PO, status and the next ETA. Click a row
+  for the ETA lines and the container-by-container cover; click a heading
+  to sort. *Critical* is short with no PO landing within 2 weeks; *Low* is
+  short but covered by a PO within 2 weeks, or free stock under a month of
+  Clockwork's own average usage.
+- **Our demand** is the metres the open containers will cut, in priority
+  order: air freight first, then the C numbers in order, then the container
+  being planned on the Stock planner tab. A container is **shipped** (its
+  cloth already cut, so not counted) when the Shipped box on its card is
+  ticked; left alone, an air freight within 2 weeks of landing and a sea
+  container within 5 weeks are taken as shipped.
+- **The planner's Fabric column** shows, for each code, the free metres of
+  its cloth once everything above is cut, and updates as the Actual cartons
+  change. Short, it shows the PO ETA that covers it: amber within 2 weeks,
+  red beyond (the date the cartons could go on), or "no PO".
+- **Which cloth a code takes** comes from Clockwork's own style list on the
+  report, with the colour in our Sage description choosing between cloths
+  (CJ0193 in 03 is black, in 01 white; a colour the list leaves out is found
+  in the same cloth, so a black mesh-back jacket is black precure). Mesh
+  backs take the bird-eye mesh too. **Metres per garment** is `CKW_USAGE`
+  in the page, copied from the production planner's costing and lay-plan
+  figures by `tools/build-fabric-usage.py` (run it again, with the
+  production planner checked out beside this repo, when its figures change);
+  a customer variant with no figure takes its base style's, marked as such.
+  The **Codes and their cloth** panel under the table lists every style the
+  tab could not work out: pick the cloth, type the metres (and mesh metres),
+  Save, and every size of that style follows. Tick "show every style" to
+  review the automatic choices too.
+- The report, the mappings and the Shipped ticks are saved with the plan
+  and published with it, so the view-only page shows the same tab, without
+  the import or the mapping controls.
