@@ -36,6 +36,14 @@ A token that can write this repo can change anything in it, the page
 included, so keep it to the one PC that publishes. Every publish is a commit,
 so the repo's history holds every version of the plan.
 
+## Changing a container
+
+A container card opens its contents. **Edit quantities** changes the units on
+a line (0 removes it). **+ Add code** (24 Oct 2026) puts one more code on the
+container: type or pick the stock code and the units. A code already on the
+container has the units added to its line; a code not in the stock data is
+allowed, but named, since the projected-stock list only shows codes it knows.
+
 ## Clockwork prices and container values
 
 **Price list** in the editor's header opens the Clockwork price list. Paste
