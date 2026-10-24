@@ -130,7 +130,7 @@ header h1{font-size:16px;font-weight:600}
 .rc{font-size:11px;color:#6b7280;margin-left:auto}
 .twrap{background:#fff;border-radius:7px;border:1px solid #dde3ed;overflow:hidden}
 .tscroll{overflow-x:auto}
-table.main{width:100%;border-collapse:collapse;font-size:12px;min-width:1050px}
+table.main{width:100%;border-collapse:collapse;font-size:12px;min-width:1170px}
 table.main th{background:#f0f3f8;color:#4b5563;font-weight:600;font-size:10px;padding:7px 8px;text-align:left;border-bottom:1px solid #dde3ed;white-space:nowrap;cursor:pointer;user-select:none;text-transform:uppercase;letter-spacing:.3px}
 table.main th:hover{color:#111827;background:#e6eaf2}
 table.main th.ns{cursor:default}
@@ -210,6 +210,19 @@ body.viewer-mode .view-only{display:block !important}
 .egrid label{display:block;font-size:11px;color:#4b5563;font-weight:600;margin-bottom:3px}
 .egrid input{width:100%;padding:6px 9px;border:1px solid #c8d0df;border-radius:5px;font-size:12px;font-family:Arial,sans-serif}
 
+/* fabric usage tab */
+.rpt.fab{min-width:1000px}
+.rpt.fab th.fs{cursor:pointer;user-select:none}
+.rpt.fab th.fs:hover{color:#111827;background:#e6eaf2}
+.rpt.fab th .parrow{color:#9ca3af;font-size:9px}
+.rpt.fab tr.fabrow{cursor:pointer}
+.rpt.fab tr.fab-open td{background:#e8f0fb}
+.rpt.fab tr.fab-detail td{background:#f8fafc;white-space:normal;padding:10px 12px;border-bottom:2px solid #dde3ed;cursor:default}
+.fab-grid{display:grid;grid-template-columns:1fr 1.4fr;gap:14px}
+.fab-grid h4{font-size:12px;color:#1F3864;margin-bottom:6px}
+.fab-link{border-bottom:1px dotted #1F3864;color:#1F3864;font-weight:600}
+#fabTA{min-height:60px}
+
 /* ── Mobile responsive ── */
 @media (max-width: 768px){
   header{padding:10px 12px}
@@ -223,7 +236,7 @@ body.viewer-mode .view-only{display:block !important}
   .ph h2{font-size:12px}
   .ph .sub{display:none}
   /* On phones, let the big table scroll horizontally as a block */
-  table.main{min-width:1050px}
+  table.main{min-width:1170px}
   .filters input{min-width:140px;flex:1}
   .filters{gap:5px}
   .rwi-code{min-width:90px;font-size:11px}
@@ -235,6 +248,7 @@ body.viewer-mode .view-only{display:block !important}
   header .btn{font-size:11px;padding:5px 8px}
   .ctypes{grid-template-columns:1fr}
   .po-cards{grid-template-columns:1fr}
+  .fab-grid{grid-template-columns:1fr}
 }
 @media (max-width: 420px){
   .stats{grid-template-columns:1fr 1fr}
@@ -267,13 +281,14 @@ body.viewer-mode .view-only{display:block !important}
 <div class="tabs">
   <button class="tab tab-active" id="tab-planner" onclick="showTab('planner')">&#128230; Stock planner</button>
   <button class="tab" id="tab-reports" onclick="showTab('reports')">&#128203; Customer reports</button>
+  <button class="tab" id="tab-fabric" onclick="showTab('fabric')">&#129525; Fabric usage</button>
 </div>
 
 <div id="plannerView">
 <div class="toolbar">
   <button class="btn btn-p edit-only" id="pasteBtn" onclick="togglePaste()">&#9998; Paste stock data from Sage</button>
   <span id="skuCount" style="font-size:13px;font-weight:700;color:#1F3864;padding:0 4px"></span>
-  <div style="margin-left:auto;font-size:11px;color:#4b5563">Target cover: <strong>12 wks</strong> &nbsp;|&nbsp; Air lead: <strong>2 wks</strong> &nbsp;|&nbsp; Container lead: <strong>13 wks</strong> &nbsp;|&nbsp; <span id="prodPlanInfo"></span></div>
+  <div style="margin-left:auto;font-size:11px;color:#4b5563">Target cover: <strong>12 wks</strong> &nbsp;|&nbsp; Air lead: <strong>2 wks</strong> &nbsp;|&nbsp; Container lead: <strong>13 wks</strong> &nbsp;|&nbsp; <span id="prodPlanInfo"></span> &nbsp;|&nbsp; <span id="fabricInfo"></span></div>
 </div>
 
 <div class="sbar" id="sbar">
@@ -473,6 +488,7 @@ body.viewer-mode .view-only{display:block !important}
           <th onclick="sBy('wkCover')" style="width:78px;text-align:right;color:#065f46">Wks cover &#8597;</th>
           <th onclick="sBy('adjCartons')" style="width:70px;text-align:right">Rec crt &#8597;</th>
           <th class="ns" style="width:145px;text-align:center">Actual cartons</th>
+          <th class="ns" style="width:112px;text-align:center;color:#5b21b6" title="Clockwork's cloth for this code: free metres once every open container and the cartons planned here are cut. Short: the PO that covers it and when. From the Fabric usage tab.">&#129525; Fabric</th>
         </tr></thead>
         <tbody id="tBody"></tbody>
       </table>
@@ -508,6 +524,55 @@ body.viewer-mode .view-only{display:block !important}
       <h3>&#128279; Code alignment</h3>
       <p>Enter the customer's own product code and how many units make up one of their cases. Blank case size defaults to a quarter of our carton. Changes save automatically and go out to the team view when you publish.</p>
       <div id="rptMap"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Fabric usage tab -->
+<div id="fabricView" class="hidden">
+  <div class="main">
+    <div class="pbox" style="margin-bottom:12px">
+      <div class="rpt-ctl">
+        <h3 style="margin:0">&#129525; Clockwork fabric usage</h3>
+        <button class="btn btn-p edit-only" style="font-size:12px" onclick="document.getElementById('fabImportBox').classList.toggle('hidden')">&#8681; Import Clockwork report</button>
+        <input type="text" id="fabSearch" placeholder="&#128269; Filter cloth or colour..." oninput="renderFabric()" style="font-size:12px;padding:5px 9px;border-radius:5px;border:1px solid #c8d0df;background:#fff;min-width:170px;font-family:Arial,sans-serif">
+        <select id="fabFilter" onchange="renderFabric()">
+          <option value="">All cloths</option>
+          <option value="issues">Critical and Low</option>
+          <option value="critical">Critical only</option>
+          <option value="low">Low only</option>
+          <option value="demand">With our demand</option>
+        </select>
+        <span class="rc" id="fabCount"></span>
+      </div>
+      <p class="foot" id="fabMeta" style="margin-top:8px"></p>
+      <div id="fabImportBox" class="hidden edit-only" style="margin-top:10px;border-top:1px solid #dde3ed;padding-top:10px">
+        <p style="font-size:12px;color:#4b5563;margin-bottom:7px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <label style="font-weight:600;color:#1F3864">Report date</label> <input type="date" id="fabDate" style="padding:4px 8px;border:1px solid #c8d0df;border-radius:5px;font-size:12px;font-family:Arial,sans-serif">
+          <input type="file" id="fabFile" accept=".xlsx" style="display:none" onchange="fabricImportFile(this)">
+          <button class="btn btn-p" style="font-size:12px" onclick="fabricImportClick()">&#128196; Choose the .xlsx</button>
+          <span>or paste the whole sheet below (headings included) and</span>
+          <button class="btn" style="font-size:12px" onclick="fabricImportPaste()">&#10003; Load pasted</button>
+        </p>
+        <textarea id="fabTA" placeholder="Click here then Ctrl+V the TIBARD FABRIC USAGE REPORT sheet..."></textarea>
+        <p class="foot">Read by heading: StockCode, Description, the styles column (Column1, used for the mapping, never shown), QtyOnHand, QtyOnOrder, SafetyStockQty, AvgMonthlyUsage, JobDemand and every ETA column. The report date sets the year on ETAs like "NOV 23". Importing replaces the previous report; the cloth and figures set below are kept.</p>
+      </div>
+    </div>
+    <div id="fabEmpty" class="uzone">
+      <h2>&#129525; No Clockwork fabric report yet</h2>
+      <p class="edit-only">Press <strong>Import Clockwork report</strong> above and choose the monthly TIBARD FABRIC USAGE REPORT .xlsx</p>
+      <p class="view-only" style="display:none">The buying team has not imported a Clockwork fabric report yet.</p>
+      <small>Once it is in, every container plan is checked against the metres Clockwork hold, and the planner's Fabric column shows where the cloth runs short.</small>
+    </div>
+    <div id="fabWrap" class="hidden">
+      <div class="stats" id="fabTiles"></div>
+      <div class="twrap"><div class="tscroll" id="fabTable"></div></div>
+      <p class="foot"><strong>In stock</strong> and <strong>On PO</strong> are Clockwork's metres. <strong>Our demand</strong> = metres the open (unshipped) containers and the cartons being planned will cut. <strong>Free</strong> = in stock &minus; our demand; <strong>After PO</strong> = free + on PO. <span class="badge br">Critical</span> short, and no PO lands within 2 weeks to cover it. <span class="badge ba">Low</span> short but a PO lands within 2 weeks, or free is under a month of Clockwork's average usage. Click a row for the ETAs and the container-by-container cover; click a heading to sort.</p>
+      <div class="pbox" id="fabMapBox" style="margin-top:12px">
+        <h3 style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">&#128279; Codes and their cloth <span id="fabMapCount" class="rc" style="margin-left:0"></span> <label style="font-size:11px;font-weight:400;color:#4b5563;display:flex;align-items:center;gap:4px;margin-left:auto"><input type="checkbox" onchange="fabShowAllMap=this.checked;renderFabric()"> show every style, not only the gaps</label></h3>
+        <p>A code's cloth comes from Clockwork's own style list on the report, its colour from our Sage description, and its metres per garment from the production planner's costing figures (a customer variant without one takes its base style's). Anything that cannot be worked out is listed here: pick the cloth, type the metres, press Save, and every size of that style follows. The planner's Fabric column shows <strong>?</strong> for a code with no cloth.</p>
+        <div id="fabMapRows"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -754,7 +819,7 @@ function showData(){
   document.getElementById('dataWrap').classList.remove('hidden');
   initSbar();
   document.getElementById('lastUpdated').textContent = 'Loaded: '+now().toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
-  updateStats(); renderTable(); renderPOCards(); renderProj(); renderRW(); updateCapSum(); renderBookedPOs(); renderInHouse(); renderProdPlanInfo(); renderReport();
+  updateStats(); renderTable(); renderPOCards(); renderProj(); renderRW(); updateCapSum(); renderBookedPOs(); renderInHouse(); renderProdPlanInfo(); renderReport(); fabricRefresh();
 }
 
 // ── Order qty calculations ─────────────────────────────────────────────────
@@ -1546,6 +1611,7 @@ function renderPOCards(){
       +'<span class="poc-wks" style="background:'+wbg+'">'+wl+'</span>'
       +'<div style="font-size:11px;color:#4b5563"><strong>'+po.items.length+'</strong> SKUs | <strong>'+tot.toLocaleString()+'</strong> units</div>'
       +'<div style="font-size:11px;color:#4b5563;margin-top:2px">&#128682; '+crtH+'</div>'
+      +'<div style="font-size:10px;margin-top:3px"><label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;color:'+(poShipped(po)?'#065f46':'#92400e')+'" title="Shipped: Clockwork have cut and packed it, so its cloth no longer counts as demand on the Fabric usage tab. Untouched, air freight within 2 weeks of landing and a sea container within 5 weeks count as shipped." onclick="event.stopPropagation()"><input type="checkbox" class="edit-only" '+(poShipped(po)?'checked':'')+' onchange="setShipped('+i+',this.checked)" style="accent-color:#065f46;margin:0">'+(poShipped(po)?'&#10003; Shipped, cloth cut':'&#9986; Cloth still to cut')+(po.shipped===undefined?' <span style="color:#9ca3af">(auto)</span>':'')+'</label></div>'
       +(IS_EDITOR&&priceCount()?(function(){ var cv=containerValue(po.items); return '<div class="edit-only" style="font-size:11px;color:#1F3864;margin-top:2px">&asymp; <strong>'+fUSD(cv.value)+'</strong>'+(cv.unpriced.length?' <span style="color:#92400e" title="'+esc(cv.unpriced.join(', '))+'">+'+cv.unpriced.length+' unpriced</span>':'')+'</div>'; })():'')
       +'<div style="font-size:10px;color:#1F3864;margin-top:4px;font-weight:600">'+((selectedPO===po.ref)?'&#9650; Hide details':'&#9660; Click to view contents')+'</div>'
       +'<button class="btn edit-only" style="font-size:10px;padding:4px 8px;margin-top:6px;width:100%;color:#065f46;border-color:#a7d4bb" onclick="event.stopPropagation();bookInPO('+i+')">&#10003; Mark as booked in</button>'
@@ -2126,7 +2192,7 @@ function toggleIncl(uid,checked){ if(!IS_EDITOR) return;
   r.included=checked;
   var el=document.getElementById('row-'+r._uid);
   if(el){ checked?el.classList.remove('row-excl'):el.classList.add('row-excl'); }
-  updateCapSum(); updateStats(); dbSave();
+  updateCapSum(); updateStats(); dbSave();  fabricRefreshSoon();
 }
 function tickAll(state){ if(!IS_EDITOR) return;
   // Apply to currently filtered/visible rows only
@@ -2204,7 +2270,10 @@ function updateActUnits(r){
   // Also refresh the live Wks cover cell
   var wc=document.getElementById('wc-'+r._uid);
   if(wc) wc.innerHTML=wkCoverHTML(r);
+  fabricRefreshSoon();   // the planned cartons are fabric demand too
 }
+var fabricRefreshTimer=null;
+function fabricRefreshSoon(){ if(!fabricReport) return; clearTimeout(fabricRefreshTimer); fabricRefreshTimer=setTimeout(fabricRefresh, 80); }
 
 // Predicted weeks of cover when the next container (ordered today) arrives,
 // including the actual units being ordered. Updates live as Act units change.
@@ -2265,6 +2334,7 @@ function resetCartons(){
 }
 
 function renderTable(){
+  if(fabricReport){ buildFabricModel(); renderFabricInfo(); }   // the Fabric column reads the model
   var srch=(document.getElementById('srch').value||'').toLowerCase();
   var sf=document.getElementById('sfilt').value;
   var of=document.getElementById('ofilt').value;
@@ -2304,7 +2374,7 @@ function renderTable(){
   });
   document.getElementById('rc').textContent=data.length.toLocaleString()+' items shown';
   var tb=document.getElementById('tBody');
-  if(!data.length){ tb.innerHTML='<tr><td colspan="16" style="text-align:center;padding:1.5rem;color:#6b7280">No items match</td></tr>'; return; }
+  if(!data.length){ tb.innerHTML='<tr><td colspan="17" style="text-align:center;padding:1.5rem;color:#6b7280">No items match</td></tr>'; return; }
   tb.innerHTML=data.map(rowHTML).join('');
 }
 
@@ -2370,6 +2440,7 @@ function rowHTML(r){
     +'<td style="text-align:right" id="wc-'+id+'">'+wkCoverH+'</td>'
     +'<td style="text-align:right;color:#374151;font-weight:600">'+recH+'</td>'
     +'<td>'+ctrlH+'</td>'
+    +'<td id="fb-'+id+'" style="text-align:center;font-size:11px;line-height:1.3">'+fabricCellHTML(r)+'</td>'
     +'</tr>';
 }
 
@@ -2453,14 +2524,599 @@ function doAirExport(){
 }
 
 // ── Tabs ───────────────────────────────────────────────────────────────────
+// ── Fabric usage (Clockwork's monthly fabric report) ────────────────────────
+// Clockwork send a fabric usage report once a month: every cloth they hold
+// for us, metres on hand, metres on order with the ETAs, and (column D) the
+// styles each cloth is cut for. The Fabric usage tab takes that file and sets
+// our own demand against it - the metres the open containers (not yet
+// shipped) and the container being planned on the first tab will cut - so a
+// shortage is seen before the order goes, not when Clockwork say so.
+//
+//   Fabric for a code:  Clockwork's style list says which cloths a style is
+//                       cut from; the colour in our Sage description picks
+//                       between them (CJ0193 in 03 is black, in 01 white).
+//                       The two blacks are one pool (FABRIC_POOLS). A mesh
+//                       back takes the bird-eye mesh as well. A mapping typed
+//                       on the tab (fabricMap) outranks all of that.
+//   Metres per garment: CKW_USAGE, copied from the production planner by
+//                       tools/build-fabric-usage.py; a customer variant with
+//                       no figure takes its base style's; a figure typed on
+//                       the tab outranks the table.
+//   Demand:             open containers in priority - air freight first,
+//                       then the C numbers in order, then the planned
+//                       container - so a shortage lands on the container
+//                       that causes it, and the PO ETA that covers it shows.
+// Everything is saved and published with the plan (fabricReport, fabricMap,
+// and shipped on a container), so the view-only page sees the same tab.
+var CKW_USAGE={"ABSCICJ01935201":[1.25,0.0],"ABSCICJ01935401":[1.25,0.0],"ABSCICJ01935601":[1.25,0.0],"ABSCICJ01935801":[1.25,0.0],"ABSCICJ0193LL01":[1.25,0.0],"ABSCICJ0193MM01":[1.25,0.0],"ABSCICJ0193SS01":[1.25,0.0],"ABSCICJ0193XL01":[1.25,0.0],"ABSCICJ0193XS01":[1.25,0.0],"ABSCJ01935201":[1.5,0.0],"ABSCJ01935401":[1.5,0.0],"ABSCJ01935601":[1.5,0.0],"ABSCJ01935801":[1.5,0.0],"ABSCJ0193LL01":[1.5,0.0],"ABSCJ0193MM01":[1.5,0.0],"ABSCJ0193SS01":[1.5,0.0],"ABSCJ0193XL01":[1.5,0.0],"ABSCJ0193XS01":[1.5,0.0],"ANGCJ01935201":[1.5,0.0],"ANGCJ0193LL01":[1.5,0.0],"ANGCJ0193MM01":[1.5,0.0],"ANGCJ0193SS01":[1.5,0.0],"ANGCJ0193XL01":[1.5,0.0],"ANGCJ0193XS01":[1.5,0.0],"ANGCJM0193LL03":[1.25,0.0],"ANGCJM0193MM03":[1.25,0.0],"ANGCJM0193SS03":[1.25,0.0],"ANGCJM0193XL03":[1.25,0.0],"AP031603":[0.6,0.0],"AP031603S":[0.6,0.0],"AP031605":[0.6,0.0],"AP031607":[0.6,0.0],"AP031615":[0.6,0.0],"AP031664":[0.6,0.0],"AP052001":[0.85,0.0],"AP052003":[0.85,0.0],"AP052003N":[0.5,0.0],"AP052007":[0.85,0.0],"AP052031":[1.0,0.0],"AP052047BS":[0.85,0.0],"AP052064":[0.85,0.0],"AP271503":[0.25,0.0],"AP300501":[0.5,0.0],"AP300501PC":[0.5,0.0],"AP300501S":[0.5,0.0],"AP300503":[0.5,0.0],"AP300503NC":[0.5,0.0],"AP300503S":[0.5,0.0],"AP300503STS":[1.0,0.0],"AP300504":[0.5,0.0],"AP300505":[0.5,0.0],"AP300505S":[1.0,0.0],"AP300507":[0.5,0.0],"AP300507S":[0.5,0.0],"AP300508":[0.5,0.0],"AP300511":[0.5,0.0],"AP300515":[0.5,0.0],"AP300515S":[0.5,0.0],"AP300516S":[0.5,0.0],"AP300521S":[0.5,0.0],"AP300522":[0.5,0.0],"AP300524":[0.5,0.0],"AP300526":[0.5,0.0],"AP300528":[0.5,0.0],"AP300531":[1.0,0.0],"AP300531S":[1.0,0.0],"AP300532":[0.5,0.0],"AP300534":[0.5,0.0],"AP300534S":[0.5,0.0],"AP300545":[0.5,0.0],"AP300545S":[0.5,0.0],"AP300547":[0.5,0.0],"AP300547BS":[0.5,0.0],"AP300547BSS":[0.5,0.0],"AP300552":[0.5,0.0],"AP300555":[0.5,0.0],"AP300556":[0.5,0.0],"AP300564":[0.5,0.0],"AP300568":[0.5,0.0],"AP300572":[0.5,0.0],"AP300572S":[0.5,0.0],"AP300583":[0.5,0.0],"AP352801":[0.5,0.0],"AP352801PC":[0.5,0.0],"AP352801S":[0.5,0.0],"AP352803":[0.5,0.0],"AP352803S":[0.5,0.0],"AP352805":[0.5,0.0],"AP352807":[0.5,0.0],"AP352808":[0.5,0.0],"AP352811":[0.5,0.0],"AP352815":[0.5,0.0],"AP352824":[0.5,0.0],"AP352828":[0.5,0.0],"AP352831":[0.8,0.0],"AP352832BS":[0.8,0.0],"AP352834":[0.5,0.0],"AP352847BS":[0.5,0.0],"AP352852":[0.5,0.0],"AP352855":[0.5,0.0],"AP352864":[0.5,0.0],"AP352872":[0.5,0.0],"AP352872S":[0.5,0.0],"AP352882":[0.5,0.0],"APP048501":[0.5,0.0],"APP048524":[0.5,0.0],"APP048531":[0.5,0.0],"APP052103":[0.5,0.0],"APP061564":[0.5,0.0],"APP241401":[0.3,0.0],"APP241403":[0.3,0.0],"APP241405":[0.3,0.0],"APP281505S":[0.3,0.0],"APP281514":[0.3,0.0],"APP281564":[0.3,0.0],"APP281572":[0.3,0.0],"APP300501":[0.5,0.0],"APP300501U":[0.5,0.0],"APP300503":[0.5,0.0],"APP300505":[0.5,0.0],"APP300507":[0.5,0.0],"APP300508":[0.5,0.0],"APP300515":[0.5,0.0],"APP300515S":[0.5,0.0],"APP300518":[0.5,0.0],"APP300524":[0.5,0.0],"APP300524U":[0.5,0.0],"APP300531":[1.1,0.0],"APP300532":[1.1,0.0],"APP300534BS":[1.1,0.0],"APP300547BS":[0.5,0.0],"APP300564":[0.5,0.0],"APP300568":[0.5,0.0],"APP300572":[0.5,0.0],"APP300580H":[0.5,0.0],"APP300582":[0.5,0.0],"APP300583":[0.5,0.0],"APP300603":[0.4,0.0],"APP300615":[0.4,0.0],"APP300647BS":[0.4,0.0],"APP352801":[0.5,0.0],"APP352801PC":[0.5,0.0],"APP352801S":[0.5,0.0],"APP352803":[0.5,0.0],"APP352803CR":[0.5,0.0],"APP352803CRG":[0.5,0.0],"APP352803MAN":[0.5,0.0],"APP352803S":[0.5,0.0],"APP352805":[0.5,0.0],"APP352805S":[0.5,0.0],"APP352808":[0.5,0.0],"APP352811":[0.5,0.0],"APP352815":[0.5,0.0],"APP352824":[0.5,0.0],"APP352852":[0.5,0.0],"APP352864":[0.5,0.0],"APP352872":[0.5,0.0],"ASKAPP066964/693":[0.53,0.0],"ASKAPP241403":[0.23,0.0],"ASKAPP352803":[0.5,0.0],"ASKHT0152LL01":[0.2,0.0],"ASKHT0152LL01/3":[0.2,0.0],"ASKHT0152LL03":[0.2,0.0],"ASKHT0152LL03/1":[0.2,0.0],"ASKHT0152LL07/7":[0.2,0.0],"ASKHT0152MM01":[0.2,0.0],"ASKHT0152MM01/3":[0.2,0.0],"ASKHT0152MM03":[0.2,0.0],"ASKHT0152MM03/1":[0.2,0.0],"ASKHT0152MM07/7":[0.2,0.0],"ASKHT0152SS01":[0.2,0.0],"ASKHT0152SS01/3":[0.2,0.0],"ASKHT0152SS03":[0.2,0.0],"ASKHT0152SS03/1":[0.2,0.0],"ASKHT0152SS07/7":[0.2,0.0],"BCCJ0193LL03":[1.5,0.0],"BCCJ0193MM03":[1.5,0.0],"BCCJ0193SS03":[1.5,0.0],"BECJ01935201":[1.5,0.0],"BECJ0193LL01":[1.5,0.0],"BECJ0193MM01":[1.5,0.0],"BECJ0193SS01":[1.5,0.0],"BECJ0193XL01":[1.5,0.0],"BECJ0193XS01":[1.5,0.0],"BEEFCJ01935203":[1.5,0.0],"BEEFCJ0193LL03":[1.5,0.0],"BEEFCJ0193MM03":[1.5,0.0],"BEEFCJ0193SS03":[1.5,0.0],"BEEFCJ0193XL03":[1.5,0.0],"BEEFHT0152LL03M":[0.2,0.0],"BEEFHT0152LL03R":[0.2,0.0],"BEEFHT0152LL03W":[0.2,0.0],"BEEFHT0152MM03M":[0.2,0.0],"BEEFHT0152MM03R":[0.2,0.0],"BEEFHT0152MM03W":[0.2,0.0],"BEEFHT0152SS03M":[0.2,0.0],"BEEFHT0152SS03R":[0.2,0.0],"BEEFHT0152SS03W":[0.2,0.0],"BEHT016003":[0.2,0.0],"BEHT016007":[0.2,0.0],"BEHT016024":[0.2,0.0],"BEHT016055":[0.2,0.0],"CICJ01935201":[1.25,0.0],"CICJ01935201S":[1.25,0.0],"CICJ01935203":[1.25,0.0],"CICJ01935203S":[1.25,0.0],"CICJ01935203U":[1.25,0.0],"CICJ01935204":[1.25,0.0],"CICJ01935255":[1.25,0.0],"CICJ01935264":[1.25,0.0],"CICJ01935279":[1.25,0.0],"CICJ01935283":[1.25,0.0],"CICJ01935401":[1.25,0.0],"CICJ01935401S":[1.25,0.0],"CICJ01935403":[1.25,0.0],"CICJ01935403S":[1.25,0.0],"CICJ01935464":[1.25,0.0],"CICJ01935601":[1.25,0.0],"CICJ01935601S":[1.25,0.0],"CICJ01935603":[1.25,0.0],"CICJ01935603U":[1.25,0.0],"CICJ01935801":[1.25,0.0],"CICJ01935801S":[1.25,0.0],"CICJ01935803":[1.25,0.0],"CICJ01935803S":[1.25,0.0],"CICJ01935807":[1.25,0.0],"CICJ01935855":[1.25,0.0],"CICJ01936001":[1.25,0.0],"CICJ01936001S":[1.25,0.0],"CICJ01936003":[1.25,0.0],"CICJ01936003S":[1.25,0.0],"CICJ01936064":[1.25,0.0],"CICJ0193LL01":[1.25,0.0],"CICJ0193LL01S":[1.25,0.0],"CICJ0193LL01U":[1.25,0.0],"CICJ0193LL03":[1.25,0.0],"CICJ0193LL03S":[1.25,0.0],"CICJ0193LL03U":[1.25,0.0],"CICJ0193LL05":[1.25,0.0],"CICJ0193LL07":[1.25,0.0],"CICJ0193LL08":[1.25,0.0],"CICJ0193LL11":[1.25,0.0],"CICJ0193LL15":[1.25,0.0],"CICJ0193LL24":[1.25,0.0],"CICJ0193LL45":[1.25,0.0],"CICJ0193LL55":[1.25,0.0],"CICJ0193LL64":[1.25,0.0],"CICJ0193LL83":[1.25,0.0],"CICJ0193MM01":[1.25,0.0],"CICJ0193MM01S":[1.25,0.0],"CICJ0193MM01U":[1.25,0.0],"CICJ0193MM03":[1.25,0.0],"CICJ0193MM03S":[1.25,0.0],"CICJ0193MM03U":[1.25,0.0],"CICJ0193MM04":[1.25,0.0],"CICJ0193MM07":[1.25,0.0],"CICJ0193MM08":[1.25,0.0],"CICJ0193MM11":[1.25,0.0],"CICJ0193MM15":[1.25,0.0],"CICJ0193MM24":[1.25,0.0],"CICJ0193MM25":[1.25,0.0],"CICJ0193MM45":[1.25,0.0],"CICJ0193MM55":[1.25,0.0],"CICJ0193MM64":[1.25,0.0],"CICJ0193MM83":[1.25,0.0],"CICJ0193SS01":[1.25,0.0],"CICJ0193SS01S":[1.25,0.0],"CICJ0193SS01U":[1.25,0.0],"CICJ0193SS03":[1.25,0.0],"CICJ0193SS03U":[1.25,0.0],"CICJ0193SS04":[1.25,0.0],"CICJ0193SS07":[1.25,0.0],"CICJ0193SS08":[1.25,0.0],"CICJ0193SS11":[1.25,0.0],"CICJ0193SS15":[1.25,0.0],"CICJ0193SS24":[1.25,0.0],"CICJ0193SS45":[1.25,0.0],"CICJ0193SS55":[1.25,0.0],"CICJ0193SS64":[1.25,0.0],"CICJ0193SS92":[1.25,0.0],"CICJ0193XL01":[1.25,0.0],"CICJ0193XL01S":[1.25,0.0],"CICJ0193XL01U":[1.25,0.0],"CICJ0193XL03":[1.25,0.0],"CICJ0193XL03S":[1.25,0.0],"CICJ0193XL03U":[1.25,0.0],"CICJ0193XL05":[1.25,0.0],"CICJ0193XL07":[1.25,0.0],"CICJ0193XL08":[1.25,0.0],"CICJ0193XL08U":[1.25,0.0],"CICJ0193XL15":[1.25,0.0],"CICJ0193XL24":[1.25,0.0],"CICJ0193XL45":[1.25,0.0],"CICJ0193XL55":[1.25,0.0],"CICJ0193XL64":[1.25,0.0],"CICJ0193XL83":[1.25,0.0],"CICJ0193XS01":[1.25,0.0],"CICJ0193XS01S":[1.25,0.0],"CICJ0193XS01U":[1.25,0.0],"CICJ0193XS03":[1.25,0.0],"CICJ0193XS03U":[1.25,0.0],"CICJ0193XS64":[1.25,0.0],"CICJM01935201":[1.05,0.0],"CICJM01935201S":[1.05,0.0],"CICJM01935203":[1.05,0.0],"CICJM01935203S":[1.05,0.0],"CICJM01935401":[1.05,0.0],"CICJM01935401S":[1.05,0.0],"CICJM01935403":[1.05,0.0],"CICJM01935403S":[1.05,0.0],"CICJM01935601":[1.05,0.0],"CICJM01935601S":[1.05,0.0],"CICJM01935603":[1.05,0.0],"CICJM01935603S":[1.05,0.0],"CICJM01935801":[1.05,0.0],"CICJM01935801S":[1.05,0.0],"CICJM01935803":[1.05,0.0],"CICJM01936001":[1.05,0.0],"CICJM01936001S":[1.05,0.0],"CICJM01936003":[1.05,0.0],"CICJM01936003S":[1.05,0.0],"CICJM0193LL01":[1.05,0.0],"CICJM0193LL01S":[1.05,0.0],"CICJM0193LL03":[1.05,0.0],"CICJM0193LL03S":[1.05,0.0],"CICJM0193MM01":[1.05,0.0],"CICJM0193MM01S":[1.05,0.0],"CICJM0193MM03":[1.05,0.0],"CICJM0193MM03S":[1.05,0.0],"CICJM0193SS01":[1.05,0.0],"CICJM0193SS01S":[1.05,0.0],"CICJM0193SS03":[1.05,0.0],"CICJM0193SS03S":[1.05,0.0],"CICJM0193XL01":[1.05,0.0],"CICJM0193XL01S":[1.05,0.0],"CICJM0193XL03":[1.05,0.0],"CICJM0193XL03S":[1.05,0.0],"CICJM0193XS01":[1.05,0.0],"CICJM0193XS01S":[1.05,0.0],"CICJM0193XS03":[1.05,0.0],"CICJM0193XS03S":[1.05,0.0],"CICJRS01935201":[1.25,0.0],"CICJRS01935203":[1.25,0.0],"CICJRS01935224":[1.25,0.0],"CICJRS01935401":[1.25,0.0],"CICJRS01935601":[1.25,0.0],"CICJRS01935603":[1.25,0.0],"CICJRS01935801":[1.25,0.0],"CICJRS01936001":[1.25,0.0],"CICJRS0193LL01":[1.25,0.0],"CICJRS0193LL01S":[1.25,0.0],"CICJRS0193LL03":[1.25,0.0],"CICJRS0193LL24":[1.25,0.0],"CICJRS0193MM01":[1.25,0.0],"CICJRS0193MM01S":[1.25,0.0],"CICJRS0193MM03":[1.25,0.0],"CICJRS0193MM07":[1.25,0.0],"CICJRS0193MM24":[1.25,0.0],"CICJRS0193SS01":[1.25,0.0],"CICJRS0193SS01S":[1.25,0.0],"CICJRS0193SS03":[1.25,0.0],"CICJRS0193XL01":[1.25,0.0],"CICJRS0193XL01S":[1.25,0.0],"CICJRS0193XL03":[1.25,0.0],"CICJRS0193XS01":[1.25,0.0],"CICJRS0193XS03":[1.25,0.0],"CJ01935201":[1.5,0.0],"CJ01935201HW":[1.5,0.0],"CJ01935201S":[1.5,0.0],"CJ01935201U":[1.5,0.0],"CJ01935203":[1.5,0.0],"CJ01935203S":[1.5,0.0],"CJ01935203U":[1.5,0.0],"CJ01935207":[1.5,0.0],"CJ01935255S":[1.5,0.0],"CJ01935256":[1.5,0.0],"CJ01935264":[1.5,0.0],"CJ01935283":[1.5,0.0],"CJ01935401":[1.5,0.0],"CJ01935401L":[1.5,0.0],"CJ01935401S":[1.5,0.0],"CJ01935403":[1.5,0.0],"CJ01935407":[1.5,0.0],"CJ01935408":[1.5,0.0],"CJ01935455S":[1.5,0.0],"CJ01935601":[1.5,0.0],"CJ01935601S":[1.5,0.0],"CJ01935601U":[1.5,0.0],"CJ01935603":[1.5,0.0],"CJ01935603S":[1.5,0.0],"CJ01935655":[1.5,0.0],"CJ01935655S":[1.5,0.0],"CJ01935801":[1.5,0.0],"CJ01935801S":[1.5,0.0],"CJ01935803":[1.5,0.0],"CJ01935803S":[1.5,0.0],"CJ01935855S":[1.5,0.0],"CJ01936001":[1.5,0.0],"CJ01936001S":[1.5,0.0],"CJ01936001U":[1.5,0.0],"CJ01936003":[1.5,0.0],"CJ01936003S":[1.5,0.0],"CJ0193LL01":[1.5,0.0],"CJ0193LL01HW":[1.5,0.0],"CJ0193LL01S":[1.5,0.0],"CJ0193LL01U":[1.5,0.0],"CJ0193LL03":[1.5,0.0],"CJ0193LL03S":[1.5,0.0],"CJ0193LL03U":[1.5,0.0],"CJ0193LL04":[1.5,0.0],"CJ0193LL07":[1.5,0.0],"CJ0193LL07S":[1.5,0.0],"CJ0193LL15":[1.5,0.0],"CJ0193LL24":[1.5,0.0],"CJ0193LL55S":[1.5,0.0],"CJ0193LL64":[1.5,0.0],"CJ0193LL83":[1.5,0.0],"CJ0193MM01":[1.5,0.0],"CJ0193MM01HW":[1.5,0.0],"CJ0193MM01S":[1.5,0.0],"CJ0193MM01U":[1.5,0.0],"CJ0193MM03":[1.5,0.0],"CJ0193MM03S":[1.5,0.0],"CJ0193MM03U":[1.5,0.0],"CJ0193MM04":[1.5,0.0],"CJ0193MM07S":[1.5,0.0],"CJ0193MM08":[1.5,0.0],"CJ0193MM15":[1.5,0.0],"CJ0193MM24":[1.5,0.0],"CJ0193MM45":[1.5,0.0],"CJ0193MM55S":[1.5,0.0],"CJ0193MM64":[1.5,0.0],"CJ0193MM83":[1.5,0.0],"CJ0193SS01":[1.5,0.0],"CJ0193SS01HW":[1.5,0.0],"CJ0193SS01S":[1.5,0.0],"CJ0193SS01U":[1.5,0.0],"CJ0193SS03":[1.5,0.0],"CJ0193SS03S":[1.5,0.0],"CJ0193SS03U":[1.5,0.0],"CJ0193SS07S":[1.5,0.0],"CJ0193SS15":[1.5,0.0],"CJ0193SS24":[1.5,0.0],"CJ0193SS45":[1.5,0.0],"CJ0193SS55S":[1.5,0.0],"CJ0193SS64":[1.5,0.0],"CJ0193XL01":[1.5,0.0],"CJ0193XL01HW":[1.5,0.0],"CJ0193XL01S":[1.5,0.0],"CJ0193XL01U":[1.5,0.0],"CJ0193XL03":[1.5,0.0],"CJ0193XL03S":[1.5,0.0],"CJ0193XL03U":[1.5,0.0],"CJ0193XL04":[1.5,0.0],"CJ0193XL07S":[1.5,0.0],"CJ0193XL15":[1.5,0.0],"CJ0193XL24":[1.5,0.0],"CJ0193XL55S":[1.5,0.0],"CJ0193XL64":[1.5,0.0],"CJ0193XL83":[1.5,0.0],"CJ0193XS01":[1.5,0.0],"CJ0193XS01S":[1.5,0.0],"CJ0193XS01U":[1.5,0.0],"CJ0193XS03":[1.5,0.0],"CJ0193XS03S":[1.5,0.0],"CJ0193XS08":[1.5,0.0],"CJ0193XS24":[1.5,0.0],"CJ0193XS45":[1.5,0.0],"CJ0193XS55S":[1.5,0.0],"CJM01935201":[1.25,0.0],"CJM01935201S":[1.25,0.0],"CJM01935203":[1.25,0.0],"CJM01935203S":[1.25,0.0],"CJM01935401":[1.25,0.0],"CJM01935401S":[1.25,0.0],"CJM01935403":[1.25,0.0],"CJM01935403S":[1.25,0.0],"CJM01935601":[1.25,0.0],"CJM01935603":[1.25,0.0],"CJM01935801":[1.25,0.0],"CJM01935803":[1.25,0.0],"CJM01936001":[1.25,0.0],"CJM01936001S":[1.25,0.0],"CJM01936003S":[1.25,0.0],"CJM0193LL01":[1.25,0.0],"CJM0193LL01RC":[1.25,0.0],"CJM0193LL01S":[1.25,0.0],"CJM0193LL03":[1.25,0.0],"CJM0193LL03S":[1.25,0.0],"CJM0193LL24":[1.25,0.0],"CJM0193MM01":[1.25,0.0],"CJM0193MM01RC":[1.25,0.0],"CJM0193MM01S":[1.25,0.0],"CJM0193MM03":[1.25,0.0],"CJM0193MM03S":[1.25,0.0],"CJM0193SS01":[1.25,0.0],"CJM0193SS01RC":[1.25,0.0],"CJM0193SS01S":[1.25,0.0],"CJM0193SS03":[1.25,0.0],"CJM0193SS03S":[1.25,0.0],"CJM0193XL01":[1.25,0.0],"CJM0193XL01RC":[1.25,0.0],"CJM0193XL01S":[1.25,0.0],"CJM0193XL03":[1.25,0.0],"CJM0193XL03S":[1.25,0.0],"CJM0193XL24":[1.25,0.0],"CJM0193XS01":[1.25,0.0],"CJM0193XS01S":[1.25,0.0],"CJM0193XS03":[1.25,0.0],"CJM0193XS03S":[1.25,0.0],"CJRS01935201":[1.5,0.0],"CJRS01935201RC":[1.5,0.0],"CJRS01935201S":[1.5,0.0],"CJRS01935401":[1.5,0.0],"CJRS01935601":[1.5,0.0],"CJRS01935801":[1.5,0.0],"CJRS01936001":[1.5,0.0],"CJRS0193LL01":[1.5,0.0],"CJRS0193LL01RC":[1.5,0.0],"CJRS0193LL01S":[1.5,0.0],"CJRS0193LL03":[1.5,0.0],"CJRS0193LL15S":[1.5,0.0],"CJRS0193MM01":[1.5,0.0],"CJRS0193MM01RC":[1.5,0.0],"CJRS0193MM01S":[1.5,0.0],"CJRS0193MM03":[1.5,0.0],"CJRS0193MM15S":[1.5,0.0],"CJRS0193SS01":[1.5,0.0],"CJRS0193SS01RC":[1.5,0.0],"CJRS0193SS01S":[1.5,0.0],"CJRS0193SS03":[1.5,0.0],"CJRS0193SS68":[1.5,0.0],"CJRS0193XL01":[1.5,0.0],"CJRS0193XL01RC":[1.5,0.0],"CJRS0193XL01S":[1.5,0.0],"CJRS0193XL03":[1.5,0.0],"CJRS0193XS01":[1.5,0.0],"CJRS0193XS01RC":[1.5,0.0],"CT01964401":[1.25,0.0],"CT01964415":[1.25,0.0],"CT01964601":[1.25,0.0],"CT01964601S":[1.25,0.0],"CT01964603":[1.25,0.0],"CT01964603S":[1.25,0.0],"CT01964607":[1.25,0.0],"CT01964615":[1.25,0.0],"CT01964626":[1.25,0.0],"CT01964626S":[1.25,0.0],"CT01964628":[1.25,0.0],"CT01964628S":[1.25,0.0],"CT01964628U":[1.25,0.0],"CT01964655":[1.25,0.0],"CT01964668":[1.25,0.0],"CT01964672":[1.25,0.0],"CT01964682":[1.25,0.0],"CT019646BU":[1.25,0.0],"CT019646DU":[1.25,0.0],"CT019646H":[1.25,0.0],"CT01964801S":[1.25,0.0],"CT01964803":[1.25,0.0],"CT01964826":[1.25,0.0],"CT01964826S":[1.25,0.0],"CT01964828":[1.25,0.0],"CT01964872":[1.25,0.0],"CT01964882":[1.25,0.0],"CT01965003":[1.25,0.0],"CT01965015":[1.25,0.0],"CT01965026":[1.25,0.0],"CT01965026S":[1.25,0.0],"CT01965028":[1.25,0.0],"CT01965055":[1.25,0.0],"CT01965072":[1.25,0.0],"CT019650H":[1.25,0.0],"CT01965203":[1.25,0.0],"CT01965203S":[1.25,0.0],"CT01965215":[1.25,0.0],"CT01965226":[1.25,0.0],"CT01965226S":[1.25,0.0],"CT01965228":[1.25,0.0],"CT01965272":[1.25,0.0],"CT01965403":[1.25,0.0],"CT01965403S":[1.25,0.0],"CT01965415":[1.25,0.0],"CT01965426":[1.25,0.0],"CT01965428":[1.25,0.0],"CT01965455":[1.25,0.0],"CT01965472":[1.25,0.0],"CT019654BU":[1.25,0.0],"CT01965603":[1.25,0.0],"CT01965626":[1.25,0.0],"CT01965628":[1.25,0.0],"CT01965672S":[1.25,0.0],"CT01965801":[1.25,0.0],"CT01965803":[1.25,0.0],"CT01965803S":[1.25,0.0],"CT01965826":[1.25,0.0],"CT01965828":[1.25,0.0],"CT01965872":[1.25,0.0],"CT01966003":[1.25,0.0],"CT01966026":[1.25,0.0],"CT01966028":[1.25,0.0],"CT01966072":[1.25,0.0],"CT0196LL01":[1.25,0.0],"CT0196LL01S":[1.25,0.0],"CT0196LL01U":[1.25,0.0],"CT0196LL03":[1.25,0.0],"CT0196LL03S":[1.25,0.0],"CT0196LL04":[1.25,0.0],"CT0196LL05":[1.25,0.0],"CT0196LL07":[1.25,0.0],"CT0196LL08":[1.25,0.0],"CT0196LL15":[1.25,0.0],"CT0196LL26":[1.25,0.0],"CT0196LL26S":[1.25,0.0],"CT0196LL26U":[1.25,0.0],"CT0196LL28":[1.25,0.0],"CT0196LL28S":[1.25,0.0],"CT0196LL28U":[1.25,0.0],"CT0196LL47S":[1.25,0.0],"CT0196LL52":[1.25,0.0],"CT0196LL55":[1.25,0.0],"CT0196LL64":[1.25,0.0],"CT0196LL72":[1.25,0.0],"CT0196LL72S":[1.25,0.0],"CT0196LL82":[1.25,0.0],"CT0196MM01":[1.25,0.0],"CT0196MM01S":[1.25,0.0],"CT0196MM01U":[1.25,0.0],"CT0196MM03":[1.25,0.0],"CT0196MM03C":[1.25,0.0],"CT0196MM03S":[1.25,0.0],"CT0196MM05":[1.25,0.0],"CT0196MM07":[1.25,0.0],"CT0196MM08":[1.25,0.0],"CT0196MM15":[1.25,0.0],"CT0196MM26":[1.25,0.0],"CT0196MM26S":[1.25,0.0],"CT0196MM26U":[1.25,0.0],"CT0196MM28":[1.25,0.0],"CT0196MM28S":[1.25,0.0],"CT0196MM28U":[1.25,0.0],"CT0196MM47S":[1.25,0.0],"CT0196MM52":[1.25,0.0],"CT0196MM55":[1.25,0.0],"CT0196MM64":[1.25,0.0],"CT0196MM72":[1.25,0.0],"CT0196MM72S":[1.25,0.0],"CT0196MM82":[1.25,0.0],"CT0196SS01":[1.25,0.0],"CT0196SS01S":[1.25,0.0],"CT0196SS01U":[1.25,0.0],"CT0196SS03":[1.25,0.0],"CT0196SS03S":[1.25,0.0],"CT0196SS04":[1.25,0.0],"CT0196SS07":[1.25,0.0],"CT0196SS08":[1.25,0.0],"CT0196SS15":[1.25,0.0],"CT0196SS25":[1.25,0.0],"CT0196SS26":[1.25,0.0],"CT0196SS26S":[1.25,0.0],"CT0196SS26U":[1.25,0.0],"CT0196SS28":[1.25,0.0],"CT0196SS28S":[1.25,0.0],"CT0196SS28U":[1.25,0.0],"CT0196SS47S":[1.25,0.0],"CT0196SS52":[1.25,0.0],"CT0196SS55":[1.25,0.0],"CT0196SS64":[1.25,0.0],"CT0196SS72":[1.25,0.0],"CT0196SS72S":[1.25,0.0],"CT0196SS82":[1.25,0.0],"CT0196XL01":[1.25,0.0],"CT0196XL01S":[1.25,0.0],"CT0196XL01U":[1.25,0.0],"CT0196XL03":[1.25,0.0],"CT0196XL03S":[1.25,0.0],"CT0196XL07":[1.25,0.0],"CT0196XL08":[1.25,0.0],"CT0196XL15":[1.25,0.0],"CT0196XL26":[1.25,0.0],"CT0196XL26S":[1.25,0.0],"CT0196XL26U":[1.25,0.0],"CT0196XL28":[1.25,0.0],"CT0196XL28U":[1.25,0.0],"CT0196XL47":[1.25,0.0],"CT0196XL52":[1.25,0.0],"CT0196XL55":[1.25,0.0],"CT0196XL72":[1.25,0.0],"CT0196XL72S":[1.25,0.0],"CT0196XL82":[1.25,0.0],"CT0196XS01S":[1.25,0.0],"CT0196XS03":[1.25,0.0],"CT0196XS03S":[1.25,0.0],"CT0196XS07":[1.25,0.0],"CT0196XS15":[1.25,0.0],"CT0196XS26":[1.25,0.0],"CT0196XS26U":[1.25,0.0],"CT0196XS28":[1.25,0.0],"CT0196XS28S":[1.25,0.0],"CT0196XS28U":[1.25,0.0],"CT0196XS55":[1.25,0.0],"CT0196XS72":[1.25,0.0],"CT0196XS82":[1.25,0.0],"CT30824603":[1.6,0.0],"CT30824615":[1.6,0.0],"CT30824626":[1.6,0.0],"CT30824628":[1.6,0.0],"CT30824672":[1.6,0.0],"CT308246COW":[1.6,0.0],"CT30824803":[1.6,0.0],"CT30824826":[1.6,0.0],"CT30824828":[1.6,0.0],"CT30825003":[1.6,0.0],"CT30825026":[1.6,0.0],"CT30825028":[1.6,0.0],"CT30825203":[1.6,0.0],"CT30825226":[1.6,0.0],"CT30825403":[1.6,0.0],"CT30825426":[1.6,0.0],"CT30825472":[1.6,0.0],"CT30825603":[1.6,0.0],"CT30825603S":[1.6,0.0],"CT30825626":[1.6,0.0],"CT30825626S":[2.1,0.0],"CT30825803":[1.6,0.0],"CT30825828S":[1.6,0.0],"CT30826003":[1.6,0.0],"CT30826003S":[1.6,0.0],"CT30826026":[1.6,0.0],"CT3082LL01":[1.6,0.0],"CT3082LL03":[1.6,0.0],"CT3082LL15":[1.6,0.0],"CT3082LL26":[1.6,0.0],"CT3082LL26S":[1.6,0.0],"CT3082LL28":[1.6,0.0],"CT3082LL28S":[1.6,0.0],"CT3082LL64":[1.6,0.0],"CT3082LL72":[1.6,0.0],"CT3082LL82":[1.6,0.0],"CT3082MM01":[1.6,0.0],"CT3082MM03":[1.6,0.0],"CT3082MM15":[1.6,0.0],"CT3082MM26":[1.6,0.0],"CT3082MM28":[1.6,0.0],"CT3082MM28S":[1.6,0.0],"CT3082MM72":[1.6,0.0],"CT3082MM82":[1.6,0.0],"CT3082SS01":[1.6,0.0],"CT3082SS03":[1.6,0.0],"CT3082SS15":[1.6,0.0],"CT3082SS26":[1.6,0.0],"CT3082SS28":[1.6,0.0],"CT3082SS28S":[1.6,0.0],"CT3082SS72":[1.6,0.0],"CT3082SS82":[1.6,0.0],"CT3082XL01":[1.6,0.0],"CT3082XL03":[1.6,0.0],"CT3082XL15":[1.6,0.0],"CT3082XL15S":[1.6,0.0],"CT3082XL26":[1.6,0.0],"CT3082XL28":[1.6,0.0],"CT3082XL72":[1.6,0.0],"CT3082XS01":[1.6,0.0],"CT3082XS03":[1.6,0.0],"CT3082XS15":[1.6,0.0],"CT3082XS26":[1.6,0.0],"CT3082XS28":[1.6,0.0],"CT3082XS72":[1.6,0.0],"CT3082XXL03":[1.6,0.0],"CT3082XXL03S":[1.6,0.0],"CT3082XXL15":[1.6,0.0],"CT3082XXL26":[1.6,0.0],"CT3082XXL28":[1.6,0.0],"CT3082XXL72":[1.6,0.0],"CT3082XXL82":[1.6,0.0],"FBCICJ0193MM01":[1.25,0.0],"FBCICJ0193MM03":[1.25,0.0],"FBCICJ0193SS03":[1.25,0.0],"FBCICJ0193XL01":[1.25,0.0],"FBCJ01935201":[1.5,0.0],"FBCJ01935203":[1.5,0.0],"FBCJ01935203S":[1.5,0.0],"FBCJ01935207":[1.5,0.0],"FBCJ01935403":[1.5,0.0],"FBCJ0193LL01":[1.5,0.0],"FBCJ0193LL03":[1.5,0.0],"FBCJ0193LL07":[1.5,0.0],"FBCJ0193MM01":[1.5,0.0],"FBCJ0193MM03":[1.5,0.0],"FBCJ0193MM07":[1.5,0.0],"FBCJ0193SS01":[1.5,0.0],"FBCJ0193SS03":[1.5,0.0],"FBCJ0193SS07":[1.5,0.0],"FBCJ0193XL01":[1.5,0.0],"FBCJ0193XL03":[1.5,0.0],"FBCJ0193XL07":[1.5,0.0],"HT0152LL01":[0.2,0.0],"HT0152LL03":[0.2,0.0],"HT0152LL03S":[0.2,0.0],"HT0152LL04":[0.2,0.0],"HT0152LL05":[0.2,0.0],"HT0152LL07":[0.2,0.0],"HT0152LL08":[0.2,0.0],"HT0152LL11":[0.2,0.0],"HT0152LL15":[0.2,0.0],"HT0152LL22":[0.2,0.0],"HT0152LL24":[0.2,0.0],"HT0152LL26":[0.2,0.0],"HT0152LL28":[0.2,0.0],"HT0152LL47":[0.2,0.0],"HT0152LL52":[0.2,0.0],"HT0152LL55":[0.2,0.0],"HT0152LL64":[0.2,0.0],"HT0152LL68":[0.2,0.0],"HT0152LL72":[0.2,0.0],"HT0152LL82":[0.2,0.0],"HT0152LL83":[0.2,0.0],"HT0152MM01":[0.2,0.0],"HT0152MM01S":[0.2,0.0],"HT0152MM03":[0.2,0.0],"HT0152MM03S":[0.2,0.0],"HT0152MM04":[0.2,0.0],"HT0152MM05":[0.2,0.0],"HT0152MM07":[0.2,0.0],"HT0152MM07S":[0.2,0.0],"HT0152MM08":[0.2,0.0],"HT0152MM11":[0.2,0.0],"HT0152MM15":[0.2,0.0],"HT0152MM18":[0.2,0.0],"HT0152MM22":[0.2,0.0],"HT0152MM24":[0.2,0.0],"HT0152MM26":[0.2,0.0],"HT0152MM28":[0.2,0.0],"HT0152MM31BS":[0.2,0.0],"HT0152MM47":[0.2,0.0],"HT0152MM52":[0.2,0.0],"HT0152MM55":[0.2,0.0],"HT0152MM64":[0.2,0.0],"HT0152MM68":[0.2,0.0],"HT0152MM72":[0.2,0.0],"HT0152MM82":[0.2,0.0],"HT0152MM83":[0.2,0.0],"HT0152SS01":[0.2,0.0],"HT0152SS03":[0.2,0.0],"HT0152SS03S":[0.2,0.0],"HT0152SS07":[0.2,0.0],"HT0152SS08":[0.2,0.0],"HT0152SS11":[0.2,0.0],"HT0152SS15":[0.2,0.0],"HT0152SS22":[0.2,0.0],"HT0152SS24":[0.2,0.0],"HT0152SS26":[0.2,0.0],"HT0152SS28":[0.2,0.0],"HT0152SS55":[0.2,0.0],"HT0152SS64":[0.2,0.0],"HT0152SS68":[0.2,0.0],"HT0152SS72":[0.2,0.0],"HT0152SS82":[0.2,0.0],"HT0152SS83":[0.2,0.0],"HT0152XL01":[0.2,0.0],"HT0152XL03":[0.2,0.0],"HT0152XL03S":[0.2,0.0],"HT0152XL05":[0.2,0.0],"HT0152XL07":[0.2,0.0],"HT0152XL08":[0.2,0.0],"HT0152XL11":[0.2,0.0],"HT0152XL15":[0.2,0.0],"HT0152XL22":[0.2,0.0],"HT0152XL24":[0.2,0.0],"HT0152XL26":[0.2,0.0],"HT0152XL28":[0.2,0.0],"HT0152XL52":[0.2,0.0],"HT0152XL55":[0.2,0.0],"HT0152XL64":[0.2,0.0],"HT0152XL68":[0.2,0.0],"HT0152XL72":[0.2,0.0],"HT0152XL82":[0.2,0.0],"HT0152XL83":[0.2,0.0],"HT0152XS03":[0.2,0.0],"HT0152XS08":[0.2,0.0],"HT0152XS26":[0.2,0.0],"HT0152XS72":[0.2,0.0],"HT0152XX03":[0.2,0.0],"HT0152XX28":[0.2,0.0],"HT0152XXL07":[0.2,0.0],"HT0152XXL64":[0.2,0.0],"HT016001":[0.2,0.0],"HT016003":[0.2,0.0],"HT016003S":[0.2,0.0],"HT016007":[0.2,0.0],"HT016015":[0.2,0.0],"HT016024":[0.2,0.0],"HT016055":[0.2,0.0],"HT016064":[0.2,0.0],"HTM016001":[0.12,0.0],"HTM016003":[0.12,0.0],"HTM016007":[0.12,0.0],"HTM016015":[0.12,0.0],"HTM016024":[0.12,0.0],"HTM016064":[0.12,0.0],"INNAP300503":[0.5,0.0],"INNAP300515":[0.5,0.0],"INNAP352803":[0.5,0.0],"INNCICJM01935203":[1.05,0.0],"INNCICJM0193LL03":[1.05,0.0],"INNCICJM0193MM03":[1.05,0.0],"INNCICJM0193SS03":[1.05,0.0],"INNCICJM0193XL03":[1.05,0.0],"INNCICJM0193XS03":[1.05,0.0],"INNCJM01935203":[1.25,0.0],"INNCJM0193LL03":[1.25,0.0],"INNCJM0193MM03":[1.25,0.0],"INNCJM0193SS03":[1.25,0.0],"INNCJM0193XL03":[1.25,0.0],"INNCJM0193XS03":[1.25,0.0],"INNHT0152LL03":[0.2,0.0],"INNHT0152MM03":[0.2,0.0],"INNHT0152SS03":[0.2,0.0],"INNHT0152XL03":[0.2,0.0],"MILAP059764":[0.65,0.0],"MILAP300503":[0.5,0.0],"MILAPP052103":[0.5,0.0],"MILAPP052103PC":[0.5,0.0],"MILAPP0596153":[0.65,0.0],"MILHT0152LL03":[0.2,0.0],"MILHT0152MM03":[0.2,0.0],"MILHT0152SS03":[0.2,0.0],"MVSCJ0193LL01":[1.5,0.0],"MVSCJ0193MM01":[1.5,0.0],"MVSCJ0193SS01":[1.5,0.0],"MVSCJ0193XL01":[1.5,0.0],"OHAP300501/07":[1.0,0.0],"OHAP300501C":[1.0,0.0],"OHAP300501CS":[1.0,0.0],"OHAP300503C":[1.0,0.0],"OHAP300503CST":[1.0,0.0],"OHAP300503PC":[1.0,0.0],"OHAP300503PCL":[1.0,0.0],"OHAP300503PCS":[1.0,0.0],"OHAP300503RS":[1.0,0.0],"OHAP300503RSS":[1.0,0.0],"OHAP300505":[1.0,0.0],"OHAP300507":[1.0,0.0],"OHAP300515":[1.0,0.0],"OHAP300515C":[1.0,0.0],"OHAP300515L":[1.0,0.0],"OHAP300515LS":[1.0,0.0],"OHAP300515LST":[1.0,0.0],"OHAP300515S":[1.0,0.0],"OHAP3005224DEN":[1.0,0.0],"OHAP300524":[1.0,0.0],"OHAP3005241":[1.0,0.0],"OHAP3005248":[1.0,0.0],"OHAP3005248/07":[1.0,0.0],"OHAP3005248L":[1.0,0.0],"OHAP3005248LS":[1.0,0.0],"OHAP3005248LST":[1.0,0.0],"OHAP3005248P":[1.0,0.0],"OHAP3005248S":[1.0,0.0],"OHAP3005248ST":[1.0,0.0],"OHAP300524S":[1.0,0.0],"OHAP300531":[1.0,0.0],"OHAP300531S":[1.0,0.0],"OHAP300547":[1.0,0.0],"OHAP300556":[1.0,0.0],"OHAP300582":[1.0,0.0],"OHAP300582S":[1.0,0.0],"OHAP300583":[1.0,0.0],"OHAP300583/252":[1.0,0.0],"OHAP300583S":[1.0,0.0],"OHCJCUMBRIA3201":[1.45,0.0],"OHCJCUMBRIA3207":[1.65,0.0],"OHCJCUMBRIA3401":[1.45,0.0],"OHCJCUMBRIA3601":[1.45,0.0],"OHCJCUMBRIA3603":[1.65,0.0],"OHCJCUMBRIA3607":[1.65,0.0],"OHCJCUMBRIA3801":[1.48,0.0],"OHCJCUMBRIA3803":[1.65,0.0],"OHCJCUMBRIA4001":[1.48,0.0],"OHCJCUMBRIA4003":[1.65,0.0],"OHCJCUMBRIA4007":[1.65,0.0],"OHCJCUMBRIA4201":[1.49,0.0],"OHCJCUMBRIA4201S":[1.65,0.0],"OHCJCUMBRIA4203":[1.65,0.0],"OHCJCUMBRIA4401":[1.49,0.0],"OHCJCUMBRIA4401S":[1.65,0.0],"OHCJCUMBRIA4403":[1.65,0.0],"OHCJCUMBRIA4407":[1.65,0.0],"OHCJCUMBRIA4601":[1.5,0.0],"OHCJCUMBRIA4603":[1.65,0.0],"OHCJCUMBRIA4801":[1.56,0.0],"OHCJCUMBRIA4801L":[1.6,0.0],"OHCJCUMBRIA4801S":[1.65,0.0],"OHCJCUMBRIA4803":[1.65,0.0],"OHCJCUMBRIA4807":[1.65,0.0],"OHCJCUMBRIA5001":[1.62,0.0],"OHCJCUMBRIA5003":[1.65,0.0],"OHCJCUMBRIA5201":[1.75,0.0],"OHCJCUMBRIA5203":[1.65,0.0],"OHCJCUMBRIA5401":[1.98,0.0],"OHCJCUMBRIA5401S":[1.65,0.0],"OHCJCUMBRIA5403":[1.65,0.0],"OHCJCUMBRIA5601":[2.06,0.0],"OHCJCUMBRIA5603":[1.65,0.0],"OHCJCUMBRIA5801":[2.06,0.0],"OHCJCUMBRIA6001":[2.13,0.0],"OHCJCUMBRIA6007":[1.65,0.0],"OHCJSCUMBRIA2801":[1.11,0.0],"OHCJSCUMBRIA3001":[1.12,0.0],"OHCJSCUMBRIA3201":[1.12,0.0],"OHCJSCUMBRIA3201S":[1.55,0.0],"OHCJSCUMBRIA3203":[1.55,0.0],"OHCJSCUMBRIA3401":[1.13,0.0],"OHCJSCUMBRIA3401S":[1.55,0.0],"OHCJSCUMBRIA3403":[1.55,0.0],"OHCJSCUMBRIA3601":[1.14,0.0],"OHCJSCUMBRIA3601L":[1.35,0.0],"OHCJSCUMBRIA3601S":[1.55,0.0],"OHCJSCUMBRIA3603":[1.55,0.0],"OHCJSCUMBRIA3801":[1.115,0.0],"OHCJSCUMBRIA3801L":[1.39,0.0],"OHCJSCUMBRIA3801S":[1.55,0.0],"OHCJSCUMBRIA3803":[1.55,0.0],"OHCJSCUMBRIA4001":[1.15,0.0],"OHCJSCUMBRIA4001L":[1.43,0.0],"OHCJSCUMBRIA4001S":[1.55,0.0],"OHCJSCUMBRIA4003":[1.55,0.0],"OHCJSCUMBRIA4201":[1.18,0.0],"OHCJSCUMBRIA4201L":[1.52,0.0],"OHCJSCUMBRIA4201S":[1.55,0.0],"OHCJSCUMBRIA4203":[1.55,0.0],"OHCJSCUMBRIA4401":[1.19,0.0],"OHCJSCUMBRIA4401L":[1.52,0.0],"OHCJSCUMBRIA4401S":[1.55,0.0],"OHCJSCUMBRIA4403":[1.55,0.0],"OHCJSCUMBRIA4601":[1.275,0.0],"OHCJSCUMBRIA4601S":[1.55,0.0],"OHCJSCUMBRIA4603":[1.55,0.0],"OHCJSCUMBRIA4801":[1.37,0.0],"OHCJSCUMBRIA4801L":[1.54,0.0],"OHCJSCUMBRIA4801S":[1.55,0.0],"OHCJSCUMBRIA4803":[1.55,0.0],"OHCJSCUMBRIA4803S":[1.55,0.0],"OHCJSCUMBRIA5001":[1.395,0.0],"OHCJSCUMBRIA5001S":[1.55,0.0],"OHCJSCUMBRIA5003":[1.55,0.0],"OHCJSCUMBRIA5201":[1.45,0.0],"OHCJSCUMBRIA5201L":[1.64,0.0],"OHCJSCUMBRIA5201S":[1.55,0.0],"OHCJSCUMBRIA5203":[1.55,0.0],"OHCJSCUMBRIA5401":[1.47,0.0],"OHCJSCUMBRIA5401L":[1.69,0.0],"OHCJSCUMBRIA5401S":[1.55,0.0],"OHCJSCUMBRIA5601":[1.51,0.0],"OHCJSCUMBRIA5601S":[1.55,0.0],"OHCJSCUMBRIA5603":[1.55,0.0],"OHCJSCUMBRIA5801":[1.54,0.0],"OHCJSCUMBRIA5801S":[1.55,0.0],"OHCJSCUMBRIA5803":[1.55,0.0],"OHCJSCUMBRIA6001":[1.65,0.0],"OHCJSCUMBRIA6001L":[1.72,0.0],"OHCJSCUMBRIA6001S":[1.55,0.0],"OHCOAPP059614/200":[0.6,0.0],"OHCOAPP0596F14/200":[0.55,0.0],"OHCOAPP059914/200":[0.45,0.0],"PEAP059764":[0.65,0.0],"PEAP300501":[0.5,0.0],"PEAP300503":[0.5,0.0],"PEAP300507":[0.5,0.0],"PEAPP052103":[0.5,0.0],"PEAPP052103CL":[0.5,0.0],"PEAPP052103PC":[0.5,0.0],"PEAPP052103ROM":[0.5,0.0],"PEAPP052107":[0.5,0.0],"PEAPP0596153":[0.65,0.0],"PEHT0152LL03":[0.2,0.0],"PEHT0152MM03":[0.2,0.0],"PEHT0152SS03":[0.2,0.0],"SLAPP048503":[0.5,0.0],"SLCICJ01935203":[1.25,0.0],"SLCICJ01935403":[1.25,0.0],"SLCICJ01935603":[1.25,0.0],"SLCICJ0193LL03":[1.25,0.0],"SLCICJ0193MM03":[1.25,0.0],"SLCICJ0193SS03":[1.25,0.0],"SLCICJ0193XL03":[1.25,0.0],"SLCICJ0193XS03":[1.25,0.0],"TB0201LL01/01":[0.85,0.0],"TB0201LL01/07":[0.85,0.0],"TB0201LL03/03":[0.85,0.0],"TB0201LL03/04":[0.85,0.0],"TB0201LL03/160":[0.85,0.0],"TB0201LL03S":[0.85,0.0],"TB0201LL05/239":[0.85,0.0],"TB0201LL05S":[0.85,0.0],"TB0201LL08":[0.85,0.0],"TB0201LL14":[0.85,0.0],"TB0201LL15S":[0.85,0.0],"TB0201LL18":[0.85,0.0],"TB0201LL20":[0.85,0.0],"TB0201LL22":[0.85,0.0],"TB0201LL24/22":[0.85,0.0],"TB0201LL24S":[0.85,0.0],"TB0201LL30S":[0.85,0.0],"TB0201LL31":[0.85,0.0],"TB0201LL34":[0.85,0.0],"TB0201LL34BS":[0.85,0.0],"TB0201LL47":[0.85,0.0],"TB0201LL55":[0.85,0.0],"TB0201LL55S":[0.85,0.0],"TB0201LL72":[0.85,0.0],"TB0201MM01/01":[0.85,0.0],"TB0201MM01/55":[0.85,0.0],"TB0201MM03/03":[0.85,0.0],"TB0201MM03/04":[0.85,0.0],"TB0201MM03/160":[0.85,0.0],"TB0201MM03S":[0.85,0.0],"TB0201MM05/239":[0.85,0.0],"TB0201MM05S":[0.85,0.0],"TB0201MM08":[0.85,0.0],"TB0201MM14":[0.85,0.0],"TB0201MM15S":[0.85,0.0],"TB0201MM20":[0.85,0.0],"TB0201MM22":[0.85,0.0],"TB0201MM24/22":[0.85,0.0],"TB0201MM24S":[0.85,0.0],"TB0201MM30S":[0.85,0.0],"TB0201MM47":[0.85,0.0],"TB0201MM55":[0.85,0.0],"TB0201MM55S":[0.85,0.0],"TB0201MM56":[0.85,0.0],"TB0201MM56/56":[0.85,0.0],"TB0201MM72":[0.85,0.0],"TB0201MM79":[0.85,0.0],"TB0201MM93":[0.85,0.0],"TB0201SS01/01":[0.85,0.0],"TB0201SS01/24":[0.85,0.0],"TB0201SS02":[0.85,0.0],"TB0201SS03":[0.85,0.0],"TB0201SS03/03":[0.85,0.0],"TB0201SS03/160":[0.85,0.0],"TB0201SS04":[0.85,0.0],"TB0201SS05/239":[0.85,0.0],"TB0201SS05S":[0.85,0.0],"TB0201SS08":[0.85,0.0],"TB0201SS08/25":[0.85,0.0],"TB0201SS14":[0.85,0.0],"TB0201SS15S":[0.85,0.0],"TB0201SS20":[0.85,0.0],"TB0201SS30S":[0.85,0.0],"TB0201SS31":[0.85,0.0],"TB0201SS47":[0.85,0.0],"TB0201SS51":[0.85,0.0],"TB0201SS55":[0.85,0.0],"TB0201SS56/56":[0.85,0.0],"TB0201SS64":[0.85,0.0],"TB0201SS72":[0.85,0.0],"TB0201XL01":[0.85,0.0],"TB0201XL01/01":[0.85,0.0],"TB0201XL02":[0.85,0.0],"TB0201XL03":[0.85,0.0],"TB0201XL05/239":[0.85,0.0],"TB0201XL05S":[0.85,0.0],"TB0201XL14":[0.85,0.0],"TB0201XL15S":[0.85,0.0],"TB0201XL18":[0.85,0.0],"TB0201XL24":[0.85,0.0],"TB0201XL55":[0.85,0.0],"TB0201XL55S":[0.85,0.0],"TB0201XL80H":[0.85,0.0],"TB0201XS03":[0.85,0.0],"TB0201XX03":[0.85,0.0],"TB0201XX05S":[0.85,0.0],"TB0201XX14":[0.85,0.0],"TB0201XX15":[0.85,0.0],"TB0201XX18":[0.85,0.0],"TB0201XX55":[0.85,0.0],"TGIAPP241403":[0.3,0.0],"TGIAPP241415":[0.3,0.0],"TGIAPP300503":[0.5,0.0],"TGICJ01935203":[1.5,0.0],"TGICJ01935403":[1.5,0.0],"TGICJ01935603":[1.5,0.0],"TGICJ01935803":[1.5,0.0],"TGICJ01936003":[1.5,0.0],"TGICJ0193LL03":[1.5,0.0],"TGICJ0193MM03":[1.5,0.0],"TGICJ0193SS03":[1.5,0.0],"TGICJ0193XL03":[1.5,0.0],"TGICJ0193XS03":[1.5,0.0],"TGICT01964403":[1.25,0.0],"TGICT01964403S":[1.25,0.0],"TGICT01964603":[1.25,0.0],"TGICT01964615":[1.25,0.0],"TGICT01964803":[1.25,0.0],"TGICT01964803S":[1.25,0.0],"TGICT01965003":[1.25,0.0],"TGICT01965603":[1.25,0.0],"TGICT0196LL03":[1.25,0.0],"TGICT0196LL15":[1.25,0.0],"TGICT0196MM03":[1.25,0.0],"TGICT0196MM15":[1.25,0.0],"TGICT0196SS03":[1.25,0.0],"TGICT0196SS15":[1.25,0.0],"TGICT0196XL03":[1.25,0.0],"TGICT0196XL15":[1.25,0.0],"TGICT0196XS03":[1.25,0.0],"TGICT0196XS15":[1.25,0.0],"TGIHTM016003":[0.1,0.0],"TGIWCL241507":[0.25,0.0],"TGIWCL241515":[0.25,0.0],"TGIWT4004LL03":[1.25,0.0],"TGIWT4004MM03":[1.25,0.0],"TGIWT4004SS03":[1.25,0.0],"TGIWT4004XL03":[1.25,0.0],"TGIWT4004XS03":[1.25,0.0],"TGIWT4004XX03":[1.25,0.0],"WAGCJM01935201":[1.35,0.0],"WAGCJM01935401":[1.35,0.0],"WAGCJM01935401S":[1.35,0.0],"WAGCJM01935601":[1.35,0.0],"WAGCJM01935801":[1.35,0.0],"WAGCJM01935801S":[1.35,0.0],"WAGCJM01936001":[1.35,0.0],"WAGCJM0193LL01":[1.35,0.0],"WAGCJM0193MM01":[1.35,0.0],"WAGCJM0193SS01":[1.35,0.0],"WAGCJM0193XL01":[1.35,0.0],"WAGCJM0193XL01S":[1.35,0.0],"WAGCJM0193XS01":[1.35,0.0],"WAGHTM016001":[0.12,0.0],"WAGHTM016003":[0.12,0.0],"WAGHTM016007":[0.12,0.0],"WAGHTM016015":[0.12,0.0],"WAGHTM016024":[0.12,0.0],"WAGHTM016064":[0.12,0.0],"WCL241505":[0.25,0.0],"WCL241507":[0.25,0.0],"WT40045201":[1.25,0.0],"WT40045201S":[1.25,0.0],"WT40045203":[1.25,0.0],"WT40045207":[1.25,0.0],"WT40045215":[1.25,0.0],"WT40045415":[1.25,0.0],"WT40045601":[1.25,0.0],"WT40045615":[1.25,0.0],"WT40045801S":[1.25,0.0],"WT40045815":[1.25,0.0],"WT4004LL01":[1.25,0.0],"WT4004LL01S":[1.25,0.0],"WT4004LL03":[1.25,0.0],"WT4004LL07":[1.25,0.0],"WT4004LL08":[1.25,0.0],"WT4004LL11":[1.25,0.0],"WT4004LL15":[1.25,0.0],"WT4004LL55":[1.25,0.0],"WT4004MM01":[1.25,0.0],"WT4004MM03":[1.25,0.0],"WT4004MM07":[1.25,0.0],"WT4004MM08":[1.25,0.0],"WT4004MM11":[1.25,0.0],"WT4004MM15":[1.25,0.0],"WT4004MM55S":[1.25,0.0],"WT4004SS01":[1.25,0.0],"WT4004SS03":[1.25,0.0],"WT4004SS07":[1.25,0.0],"WT4004SS15":[1.25,0.0],"WT4004SS55":[1.25,0.0],"WT4004XL01":[1.25,0.0],"WT4004XL03":[1.25,0.0],"WT4004XL07":[1.25,0.0],"WT4004XL15":[1.25,0.0],"WT4004XL55":[1.25,0.0],"WT4004XS01":[1.25,0.0],"WT4004XS03":[1.25,0.0],"WT4004XS15":[1.25,0.0],"WT4004XX01":[1.25,0.0],"WT4004XX07":[1.25,0.0],"WT4004XX08":[1.25,0.0],"YOAP300503":[0.5,0.0],"YOCJ01935203":[1.5,0.0],"YOCJ01935403":[1.5,0.0],"YOCJ01935803":[1.5,0.0],"YOCJ0193LL03":[1.5,0.0],"YOCJ0193MM03":[1.5,0.0],"YOCJ0193SS03":[1.5,0.0],"YOCJ0193XL03":[1.5,0.0],"YOCJ0193XS03":[1.5,0.0]};
+var fabricReport=null;   // {reportDate, importedAt, fileName, fabrics:[{wh,code,desc,styles,onHand,onOrder,safety,jobDemand,avgMonthly,etas:[{qty,date,note,raw}]}]}
+var fabricMap={};        // {key: {fab, m, mesh, at}}  key = a code, or STEM|COLOUR for every size of a style
+var FABRIC_POOLS=[['1RBBLACKPRECURE','1RBTEREDOBLKVATDYE']];   // interchangeable cloths counted as one line (Luke, 24 Oct 2026)
+var FABRIC_ETA_WKS=2;    // a PO landing within this many weeks still counts as cover (shown Low, not Critical)
+var MESH_DEFAULT_M=0.12; // mesh per garment where the lay plan has no figure (assumed; shown as such)
+var FABRIC_CUST=/^(ABS|ALS|ANG|ASK|BC|BEEF|BE|BID|CAR|FB|INN|MIL|MVS|PE|SL|TGI|TW|WAG|YO)(?=(CI|CJ|CT|AP|HT|TB|WT|WCL|NOTS))/;
+var FABRIC_SIZES=(function(){ var m={}; for(var n=6;n<=60;n+=2) m[('0'+n).slice(-2)]=true; return m; })();
+var COLOUR_WORDS={WHITE:'WHT',WHT:'WHT',BLACK:'BLK',BLK:'BLK',NAVY:'NVY',NVY:'NVY',RED:'RED',GREY:'GRY',GRAY:'GRY',GRY:'GRY',OLIVE:'OLV',MAROON:'MRN',MARN:'MRN',BURGUNDY:'MRN',BLUE:'BLU',BLU:'BLU',GREEN:'GRN',EMERALD:'GRN',CREAM:'CRM',KHAKI:'KHK',ROYAL:'ROY',STORM:'STM',HOSPITAL:'HSP',NIL:'NIL',INDIGO:'IND',DENIM:'IND',PINK:'PNK'};
+var COLOUR_CODES={'01':'WHITE','03':'BLACK','15':'NAVY','26':'BLUE/WHITE','28':'BLACK/WHITE','31':'NAVY/WHITE','34':'RED/WHITE','47':'BLACK/WHITE','64':'STORM GREY','83':'OLIVE','48':'STORM GREY','72':'BLACK/WHITE','07':'RED','22':'EMERALD','55':'ROYAL BLUE','92':'EAU DE NIL','14':'GREY','24':'INDIGO','53':'KHAKI'};
+var FABRIC_NOISE=/TERREDO|TEREDO|PRECURE|X133ECO|T946|T854|VATDYE|TAFFATA|BUTCHER|STRIPE|OXFORD|MESH|BIRD|CHINA|J54|PRE$|NEW$|^1RB|^8RL|^8BSP|^8GC|^1TER|\d+/g;
+
+// code -> {stem, col, suf}: CJ01935201 -> CJ0193 / 01 / ''. The same rule as
+// split_code() in tools/build-fabric-usage.py; keep the two together.
+function splitCode(code){
+  var c=(code||'').trim().toUpperCase();
+  var m=/^([A-Z0-9]+?)(\d{2})([A-Z]{0,3}|\/\d{1,3})$/.exec(c);
+  if(!m) return {stem:c, col:'', suf:''};
+  var rest=m[1], col=m[2], suf=m[3];
+  var m2=/^(.*?)(XXL|XS|SS|MM|LL|XL|XX)$/.exec(rest);
+  if(m2 && m2[1].length>=4) return {stem:m2[1], col:col, suf:suf};
+  var m3=/^(.*?)(\d{2})$/.exec(rest);
+  if(m3 && FABRIC_SIZES[m3[2]] && (/\d{4}$/.test(m3[1]) || /[A-Z]{3}$/.test(m3[1]))) return {stem:m3[1], col:col, suf:suf};
+  return {stem:rest, col:col, suf:suf};
+}
+function baseStem(stem){ return (stem||'').replace(FABRIC_CUST,'').replace(/ECO$/,''); }
+function baseCode(code){ var s=splitCode(code), b=baseStem(s.stem); return b===s.stem ? null : (code||'').toUpperCase().replace(s.stem, b); }
+function fabricMapKey(code){ var s=splitCode(code); return s.stem+'|'+s.col; }
+function colourTokens(txt){
+  var out=[], seen={};
+  String(txt||'').toUpperCase().replace(/[^A-Z]+/g,' ').split(' ').forEach(function(w){ var t=COLOUR_WORDS[w]; if(t && !seen[t]){ seen[t]=true; out.push(t); } });
+  return out;
+}
+function fabricPool(code){ var c=(code||'').toUpperCase(); for(var i=0;i<FABRIC_POOLS.length;i++) if(FABRIC_POOLS[i].indexOf(c)>=0) return FABRIC_POOLS[i][0]; return c; }
+function fabricIsSecondary(f){ return /MESH|TAFF|INTERLIN|LINING/.test((f.desc||'')+' '+(f.code||'')); }
+function fabricIsMesh(f){ return /MESH/.test((f.desc||'')+' '+(f.code||'')); }
+// The cloth without its colour: 1RBBLACKPRECURE and 1RBWHTPRECURE are both
+// "PRECURE", so a colour Clockwork's list leaves out can still be found.
+function fabricFamily(f){ var c=(f.code||'').toUpperCase().replace(/^(1RB|8RL|8BSP|8GC|1TER)/,'').replace(/TERREDO|TEREDO/g,'TRD'); Object.keys(COLOUR_WORDS).sort(function(a,b){ return b.length-a.length; }).forEach(function(w){ c=c.split(w).join(''); }); c=c.replace(/[^A-Z]/g,''); return c.length>=2?c:'#'+(f.code||''); }
+function fabricColourTokens(f){
+  if(f._ct) return f._ct;
+  var fromCode=(f.code||'').toUpperCase().replace(FABRIC_NOISE,' ');
+  var t=colourTokens(f.desc), s={}; t.forEach(function(x){ s[x]=true; });
+  var codeWords=[]; Object.keys(COLOUR_WORDS).sort(function(a,b){ return b.length-a.length; }).forEach(function(w){ if(fromCode.indexOf(w)>=0){ codeWords.push(COLOUR_WORDS[w]); fromCode=fromCode.split(w).join(' '); } });
+  codeWords.forEach(function(x){ if(!s[x]){ s[x]=true; t.push(x); } });
+  f._ct=t; return t;
+}
+// Clockwork write a style list as "CJ0193,CT0196__28,NHSPTT0648__01/06": a
+// style prefix, or a prefix with "__" and the colour (and suffix) it applies
+// to. "OHCJCUMBRIA4001/OHCJSCUMBRIA3601" is two codes.
+function fabricPatterns(styles){
+  var out=[];
+  String(styles||'').split(/[,\n;]/).forEach(function(t){
+    t=t.trim().toUpperCase(); if(!t) return;
+    var parts=t.split('/');
+    var toks=(parts.length===2 && parts[1].length>=8 && /^[A-Z]{2}/.test(parts[1])) ? parts : [t];
+    toks.forEach(function(x){ x=x.trim(); if(!/^[A-Z]/.test(x)) return; var i=x.indexOf('__'); out.push(i>=0 ? {prefix:x.slice(0,i), suffix:x.slice(i+2)} : {prefix:x, suffix:''}); });
+  });
+  return out;
+}
+function fabricRows(){ return (fabricReport && fabricReport.fabrics) || []; }
+function fabricByCode(code){ var c=(code||'').toUpperCase(); return fabricRows().find(function(f){ return f.code===c; })||null; }
+// The cloths Clockwork's list names for a code, strongest first: a pattern
+// with the colour on it, a plain prefix, or another size of the same style.
+function fabricCandidates(code){
+  var c=code.toUpperCase(), stem=splitCode(c).stem, out=[], seen={};
+  fabricRows().forEach(function(f){
+    if(!f._pats) f._pats=fabricPatterns(f.styles);
+    var best=0, plen=0;
+    f._pats.forEach(function(p){
+      var sc=0;
+      if(p.suffix){ if(c.indexOf(p.prefix)===0 && c.slice(-p.suffix.length)===p.suffix) sc=3; }
+      else if(c.indexOf(p.prefix)===0) sc=2;
+      else if(stem.length>=5 && p.prefix.indexOf(stem)===0) sc=1;
+      if(sc>best || (sc===best && p.prefix.length>plen)){ best=sc; plen=p.prefix.length; }
+    });
+    // the longer prefix is the more specific one: TWAP052031P is the Oxford
+    // stripe, TWAP052031 the butcher stripe
+    if(best && !seen[f.code]){ seen[f.code]=true; out.push({f:f, strength:best+plen*0.01}); }
+  });
+  return out;
+}
+// How well a cloth's colour fits a garment's: the garment's first colour word
+// is the cloth, the rest are trim; a cloth colour the garment does not have
+// counts against it (a white jacket is not blue/white).
+function colourScore(f, rowTokens){
+  var ft=fabricColourTokens(f), sc=0;
+  rowTokens.forEach(function(t,i){ if(ft.indexOf(t)>=0) sc+=(i===0?3:1); });
+  ft.forEach(function(t){ if(rowTokens.indexOf(t)<0) sc-=0.5; });
+  return sc;
+}
+function rowColourTokens(code, desc){
+  var t=colourTokens(desc);
+  if(!t.length){ var s=splitCode(code); if(COLOUR_CODES[s.col]) t=colourTokens(COLOUR_CODES[s.col]); }
+  return t;
+}
+function pickMain(cands, rowTokens){
+  var mains=cands.filter(function(x){ return !fabricIsSecondary(x.f); });
+  if(!mains.length) return null;
+  var best=null, bestSc=-99;
+  mains.forEach(function(x){
+    var sc=colourScore(x.f,rowTokens)+x.strength*0.01;
+    if(mains.length===1 && !rowTokens.length) sc=1;
+    if(sc>bestSc){ bestSc=sc; best=x; }
+  });
+  if(bestSc>=3) return {f:best.f, how:'clockwork list'};
+  // The colour did not fit any cloth on the list (Clockwork list CJM0193
+  // under white only; the black one is cut from the black of the same cloth):
+  // try the same family of cloth in the garment's colour.
+  var fams={}; mains.forEach(function(x){ fams[fabricFamily(x.f)]=true; });
+  var alt=null, altSc=2.99;
+  fabricRows().forEach(function(f){ if(fabricIsSecondary(f) || !fams[fabricFamily(f)]) return; var sc=colourScore(f,rowTokens); if(sc>altSc){ altSc=sc; alt=f; } });
+  if(alt) return {f:alt, how:'colour of the same cloth'};
+  if(bestSc>0 || (mains.length===1 && bestSc>=-0.5)) return {f:best.f, how:'clockwork list'};
+  return null;
+}
+function pickMesh(cands, rowTokens, code, desc){
+  var looksMesh=/MESH/.test((desc||'').toUpperCase()) || /(CJM|CICJM|HTM|CJRSM)/.test(splitCode(code).stem);
+  if(!looksMesh) return null;
+  var pool=cands.map(function(x){ return x.f; }).filter(fabricIsMesh);
+  if(!pool.length) pool=fabricRows().filter(fabricIsMesh);
+  if(!pool.length) return null;
+  var best=pool[0], bestSc=-99;
+  pool.forEach(function(f){ var sc=colourScore(f,rowTokens); if(sc>bestSc){ bestSc=sc; best=f; } });
+  if(bestSc<=0){ var w=pool.filter(function(f){ return fabricColourTokens(f).indexOf('WHT')>=0; }); if(w.length) best=w[0]; }
+  return best;
+}
+// Metres per garment: the code's own figure, its base style's, or the
+// average of the style's other sizes.
+var _usageIdx=null;
+function usageIndex(){
+  if(_usageIdx) return _usageIdx;
+  var byStem={};
+  Object.keys(CKW_USAGE).forEach(function(c){ var s=splitCode(c).stem; (byStem[s]=byStem[s]||[]).push(CKW_USAGE[c]); });
+  _usageIdx=byStem; return byStem;
+}
+function median(a){ if(!a.length) return 0; var s=a.slice().sort(function(x,y){ return x-y; }); var m=Math.floor(s.length/2); return s.length%2 ? s[m] : (s[m-1]+s[m])/2; }
+function usageFor(code){
+  var c=(code||'').toUpperCase(), u=CKW_USAGE[c];
+  if(u) return {m:u[0], mesh:u[1]||0, src:'costing'};
+  var b=baseCode(c); if(b && CKW_USAGE[b]) return {m:CKW_USAGE[b][0], mesh:CKW_USAGE[b][1]||0, src:'base style '+b};
+  var idx=usageIndex(), s=splitCode(c), list=idx[s.stem];
+  if(list && list.length) return {m:median(list.map(function(x){ return x[0]; })), mesh:median(list.map(function(x){ return x[1]||0; })), src:'average of '+s.stem};
+  var bs=baseStem(s.stem); list=idx[bs];
+  if(list && list.length) return {m:median(list.map(function(x){ return x[0]; })), mesh:median(list.map(function(x){ return x[1]||0; })), src:'average of '+bs};
+  return null;
+}
+function fabricOverrideFor(code){
+  var c=(code||'').toUpperCase(), s=splitCode(c);
+  return fabricMap[c] || fabricMap[s.stem+'|'+s.col] || fabricMap[baseStem(s.stem)+'|'+s.col] || null;
+}
+// Everything the tab needs to know about one code: which cloth (pooled), how
+// it was decided, metres per garment and where from, mesh if any, and the
+// gap if something is missing.
+var _resolveCache={}, _resolveVer='';
+function resolveCode(code, desc){
+  var c=(code||'').toUpperCase();
+  var ver=(fabricReport?fabricReport.importedAt:'')+'|'+(fabricMapVer||'');
+  if(_resolveVer!==ver){ _resolveCache={}; _resolveVer=ver; }
+  if(_resolveCache[c]) return _resolveCache[c];
+  if(desc===undefined){ var rr=rows.find(function(x){ return x.code.toUpperCase()===c; }); desc=rr?rr.desc:''; }
+  var out={code:c, fab:null, fabName:'', how:'', m:null, mSrc:'', mesh:null, gap:''};
+  var ov=fabricOverrideFor(c);
+  if(fabricReport){
+    var tokens=rowColourTokens(c, desc), cands=fabricCandidates(c), pick=pickMain(cands, tokens);
+    if(!pick){ var b=baseCode(c); if(b){ cands=fabricCandidates(b); pick=pickMain(cands, tokens); if(pick) pick.how+=' (as '+b+')'; } }
+    if(pick){ out.fab=fabricPool(pick.f.code); out.how=pick.how; }
+    var mesh=pickMesh(cands, tokens, c, desc);
+    if(mesh) out.mesh={fab:fabricPool(mesh.code), m:null, src:''};
+  }
+  var u=usageFor(c);
+  if(u){ out.m=u.m; out.mSrc=u.src; if(out.mesh){ out.mesh.m=u.mesh>0?u.mesh:MESH_DEFAULT_M; out.mesh.src=u.mesh>0?u.src:'assumed '+MESH_DEFAULT_M+' m'; } }
+  else if(out.mesh){ out.mesh.m=MESH_DEFAULT_M; out.mesh.src='assumed '+MESH_DEFAULT_M+' m'; }
+  if(ov){
+    if(ov.fab){ out.fab=fabricPool(ov.fab); out.how='set on the tab'; }
+    if(ov.m>0){ out.m=ov.m; out.mSrc='set on the tab'; }
+    if(ov.mesh!==undefined && ov.mesh!==null && ov.mesh!==''){ if(ov.mesh>0) out.mesh={fab:(out.mesh&&out.mesh.fab)||(ov.meshFab?fabricPool(ov.meshFab):null), m:ov.mesh, src:'set on the tab'}; else out.mesh=null; }
+  }
+  if(out.fab && !fabricLine(out.fab)) out.fab=null;
+  if(out.mesh && (!out.mesh.fab || !fabricLine(out.mesh.fab))) out.mesh=null;
+  if(!out.fab) out.gap='fabric'; else if(!(out.m>0)) out.gap='metres';
+  out.fabName=out.fab?fabricLineName(out.fab):'';
+  _resolveCache[c]=out; return out;
+}
+var fabricMapVer='';
+function bumpFabricMap(){ fabricMapVer=String(Date.now()); }
+// The pooled lines of the report: one per cloth, the two blacks together.
+var _lineCache=null, _lineVer='';
+function fabricLines(){
+  var ver=fabricReport?fabricReport.importedAt:'';
+  if(_lineCache && _lineVer===ver) return _lineCache;
+  var by={}, order=[];
+  fabricRows().forEach(function(f){
+    var k=fabricPool(f.code);
+    var L=by[k]; if(!L){ L=by[k]={key:k, codes:[], descs:[], wh:f.wh, onHand:0, onOrder:0, safety:0, jobDemand:0, avgMonthly:0, etas:[]}; order.push(k); }
+    L.codes.push(f.code); L.descs.push(f.desc||'');
+    L.onHand+=f.onHand||0; L.onOrder+=f.onOrder||0; L.safety+=f.safety||0; L.jobDemand+=f.jobDemand||0; L.avgMonthly+=f.avgMonthly||0;
+    (f.etas||[]).forEach(function(e){ L.etas.push(Object.assign({of:f.code}, e)); });
+  });
+  order.forEach(function(k){ var L=by[k]; L.etas.sort(function(a,b){ return (a.date||'9999')<(b.date||'9999')?-1:(a.date||'9999')>(b.date||'9999')?1:0; }); L.colour=fabricLineColour(L); });
+  _lineCache={by:by, order:order}; _lineVer=ver; return _lineCache;
+}
+function fabricLine(key){ return fabricLines().by[key]||null; }
+function fabricLineName(key){ var L=fabricLine(key); return L?L.codes.join(' + '):key; }
+function fabricLineColour(L){
+  var f=fabricByCode(L.codes[0]); if(!f) return '';
+  var d=' '+(f.desc||'').toUpperCase().replace(/TERREDO|TEREDO|PRECURE/g,' ')+' ', m=/\b(STORM GREY|HOSPITAL BLUE|EAU DE NIL|BLACK\/WHITE|BLUE\/WHITE|NAVY\/WHITE|RED\/WHITE|GREEN\/CREAM|WHITE|BLACK|NAVY|GREY|OLIVE|MAROON|RED|EMERALD|GREEN|BLUE)\b/.exec(d);
+  if(m) return m[1];
+  var t=fabricColourTokens(f), names={WHT:'WHITE',BLK:'BLACK',NVY:'NAVY',RED:'RED',GRY:'GREY',OLV:'OLIVE',MRN:'MAROON',BLU:'BLUE',GRN:'GREEN',CRM:'CREAM',STM:'STORM GREY',NIL:'EAU DE NIL'};
+  return t.map(function(x){ return names[x]||x; }).join('/');
+}
+// Which containers still have their cloth to cut. A container is shipped
+// once Clockwork have cut and packed it: a Shipped tick on the card says so;
+// untouched, an air freight within 2 weeks of landing and a sea container
+// within 5 weeks are taken as shipped.
+function poShipped(po){
+  if(po.shipped===true) return true;
+  if(po.shipped===false) return false;
+  var w=wksUntil(po.date); return /^AF/i.test(po.ref||'') ? w<=2 : w<=5;
+}
+function setShipped(i, on){ if(!IS_EDITOR) return; var po=cPOs[i]; if(!po) return; po.shipped=!!on; saveState(); renderPOCards(); fabricRefresh(); }
+// Priority: air freight first, then the C numbers in order, anything else by
+// date; the container being planned comes last.
+function poPriority(po){ var r=String(po.ref||'').toUpperCase(), m=/^(AF|C)\s*0*(\d+)/.exec(r); if(!m) return 9e9+ (new Date(po.date).getTime()/1e9); return (m[1]==='AF'?0:1e6)+parseInt(m[2],10); }
+function fabricOpenPOs(){ return cPOs.filter(function(po){ return !poShipped(po); }).slice().sort(function(a,b){ return poPriority(a)-poPriority(b); }); }
+function plannedItems(){ return rows.filter(function(r){ return r.included && r.actCartons>0; }).map(function(r){ return {code:r.code, qty:Math.round(r.actCartons*r.carton)}; }).filter(function(i){ return i.qty>0; }); }
+// The model behind the tab and the planner's Fabric column: per cloth, what
+// each open container takes, the running stock as they are cut in priority
+// order, and where the POs cover a shortfall.
+var fabricModel=null;
+function buildFabricModel(){
+  fabricModel=null;
+  if(!fabricReport) return null;
+  var lines=fabricLines(), by={}, gaps={}, today=d2s(now());
+  lines.order.forEach(function(k){ var L=lines.by[k]; by[k]={line:L, byPO:[], demand:0, planned:0}; });
+  var pos=fabricOpenPOs().map(function(po){ return {ref:po.ref, date:po.date, items:po.items, planned:false}; });
+  var pl=plannedItems(); if(pl.length) pos.push({ref:'(planned)', date:d2s(getNextDate()), items:pl, planned:true});
+  var nGapUnits=0;
+  pos.forEach(function(po){
+    var take={};
+    po.items.forEach(function(it){
+      if(!(it.qty>0)) return;
+      var r=resolveCode(it.code);
+      if(r.gap){ var g=gaps[fabricMapKey(it.code)]; if(!g) g=gaps[fabricMapKey(it.code)]={key:fabricMapKey(it.code), code:it.code, gap:r.gap, units:0, pos:[]}; g.units+=it.qty; if(g.pos.indexOf(po.ref)<0) g.pos.push(po.ref); nGapUnits+=it.qty; if(r.gap==='fabric') return; }
+      var add=function(fab, m, mesh){ if(!fab || !(m>0) || !by[fab]) return; var t=take[fab]=take[fab]||{m:0, units:0, codes:{}}; t.m+=m*it.qty; t.units+=it.qty; t.codes[it.code]=(t.codes[it.code]||0)+m*it.qty; };
+      if(r.m>0) add(r.fab, r.m);
+      if(r.mesh && r.mesh.fab && r.mesh.m>0) add(r.mesh.fab, r.mesh.m);
+    });
+    Object.keys(take).forEach(function(fab){ var e=by[fab]; e.byPO.push({ref:po.ref, date:po.date, planned:po.planned, m:take[fab].m, units:take[fab].units, codes:take[fab].codes}); e.demand+=take[fab].m; if(po.planned) e.planned+=take[fab].m; });
+  });
+  var cutoff=d2s(new Date(now().getTime()+FABRIC_ETA_WKS*7*864e5));
+  lines.order.forEach(function(k){
+    var e=by[k], L=e.line, run=L.onHand;
+    var dated=L.etas.filter(function(x){ return x.date && x.qty>0; });
+    e.byPO.forEach(function(p){
+      run-=p.m; p.after=run;
+      if(run<0){ var need=-run, cum=0, cov=null; for(var i=0;i<dated.length;i++){ cum+=dated[i].qty; if(cum>=need){ cov=dated[i].date; break; } } p.short=need; p.coverDate=cov; }
+    });
+    e.free=L.onHand-e.demand; e.afterPO=e.free+L.onOrder;
+    e.coverDate=null; e.short=0;
+    if(e.free<0){ e.short=-e.free; var cum2=0; for(var j=0;j<dated.length;j++){ cum2+=dated[j].qty; if(cum2>=e.short){ e.coverDate=dated[j].date; break; } } }
+    e.nextEta=dated.length?dated[0]:(L.etas[0]||null);
+    e.status = e.free<0 ? ((e.coverDate && e.coverDate<=cutoff) ? 'low' : 'critical')
+             : (e.demand>0 && L.avgMonthly>0 && e.free<L.avgMonthly) ? 'low'
+             : e.demand>0 ? 'ok' : 'none';
+    e.thin=(e.free>=0 && e.status==='low');
+  });
+  var gapList=Object.keys(gaps).map(function(k){ return gaps[k]; }).sort(function(a,b){ return b.units-a.units; });
+  fabricModel={by:by, order:lines.order, gaps:gapList, gapUnits:nGapUnits, pos:pos, cutoff:cutoff, today:today};
+  return fabricModel;
+}
+function fabricRefresh(){
+  buildFabricModel();
+  renderFabricInfo();
+  if(rows.length) rows.forEach(function(r){ var el=document.getElementById('fb-'+r._uid); if(el) el.innerHTML=fabricCellHTML(r); });
+  if(currentTab==='fabric') renderFabric();
+}
+function fm(n){ return Math.round(n||0).toLocaleString(); }
+function fmM(n){ return fm(n)+' m'; }
+function fabricStatusBadge(st){ return st==='critical'?'<span class="badge br">Critical</span>':st==='low'?'<span class="badge ba">Low</span>':st==='ok'?'<span class="badge bg">OK</span>':'<span class="badge bgr">No demand</span>'; }
+// The planner's Fabric column: free metres of the row's cloth once every open
+// container and the planned cartons are cut; short, the PO that covers it
+// and when - the date the cartons could go on.
+function fabricCellHTML(r){
+  if(!fabricReport) return '<span style="color:#9ca3af" title="Import Clockwork\'s fabric report on the Fabric usage tab">&mdash;</span>';
+  var rs=resolveCode(r.code, r.desc);
+  if(!rs.fab) return '<span style="color:#9ca3af;font-weight:700" title="No Clockwork cloth known for '+esc(r.code)+' — map it on the Fabric usage tab">?</span>';
+  var e=fabricModel&&fabricModel.by[rs.fab]; if(!e) return dash();
+  var tip=rs.fabName+' ('+e.line.colour+')\nOn hand '+fmM(e.line.onHand)+' · open containers '+fmM(e.demand-e.planned)+' · planned '+fmM(e.planned)+(rs.m>0?'\n'+esc(r.code)+': '+rs.m+' m each ('+rs.mSrc+')':'\n'+esc(r.code)+': no metres figure');
+  if(!(rs.m>0)) return '<span style="color:#92400e;font-weight:700" title="'+esc(tip)+'">? m</span>';
+  if(e.free>=0) return '<span style="color:#065f46;font-weight:600" title="'+esc(tip)+'">&#10003; '+fmM(e.free)+'</span>';
+  var cov=e.coverDate, soon=cov && cov<=fabricModel.cutoff, col=soon?'#92400e':'#b91c1c';
+  var when=cov?('PO '+fmtD(cov)+(soon?'':' ('+wksUntil(cov).toFixed(1)+' wks)')):'no PO covers it';
+  return '<span style="color:'+col+';font-weight:700;white-space:nowrap" title="'+esc(tip+'\nShort '+fmM(e.short)+' — '+when)+'">'+(soon?'&#9888;':'&#10006;')+' '+fm(-e.free)+' short</span><br><span style="color:'+col+';font-size:10px;white-space:nowrap">'+esc(cov?('PO '+fmtD(cov).replace(/ \d{4}$/,'')+(soon?'':' · '+wksUntil(cov).toFixed(0)+' wks')):'no PO')+'</span>';
+}
+function renderFabricInfo(){
+  var el=document.getElementById('fabricInfo'); if(!el) return;
+  if(!fabricReport){ el.innerHTML='<a href="#" onclick="showTab(\'fabric\');return false" style="color:#6b7280">Fabric: no Clockwork report yet</a>'; return; }
+  var m=fabricModel, nc=0, nl=0; if(m) m.order.forEach(function(k){ var s=m.by[k].status; if(s==='critical') nc++; else if(s==='low') nl++; });
+  el.innerHTML='<a href="#" onclick="showTab(\'fabric\');return false" style="color:'+(nc?'#b91c1c':nl?'#92400e':'#065f46')+';font-weight:600">Fabric: '+(nc?nc+' critical':'')+(nc&&nl?', ':'')+(nl?nl+' low':'')+(!nc&&!nl?'all covered':'')+'</a> <span style="color:#6b7280">(Clockwork report '+fmtD(fabricReport.reportDate)+')</span>';
+}
+
+// ── The tab ──────────────────────────────────────────────────────────────────
+var fabSort={col:'status', asc:true}, fabOpen={}, fabShowAllMap=false;
+function fabSortBy(col){ if(fabSort.col===col) fabSort.asc=!fabSort.asc; else fabSort={col:col, asc:(col==='status'||col==='code'||col==='colour')}; renderFabric(); }
+function fabToggle(key){ fabOpen[key]=!fabOpen[key]; renderFabric(); }
+function renderFabric(){
+  var w=document.getElementById('fabWrap'); if(!w) return;
+  var meta=document.getElementById('fabMeta'), hasRep=!!fabricReport;
+  document.getElementById('fabEmpty').classList.toggle('hidden', hasRep);
+  w.classList.toggle('hidden', !hasRep);
+  if(!hasRep){ if(meta) meta.textContent=''; return; }
+  if(!fabricModel) buildFabricModel();
+  var M=fabricModel, open=fabricOpenPOs();
+  if(meta) meta.innerHTML='Clockwork report dated <strong>'+fmtD(fabricReport.reportDate)+'</strong>'+(fabricReport.fileName?' ('+esc(fabricReport.fileName)+')':'')+', imported '+new Date(fabricReport.importedAt).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})+' &middot; '+fabricRows().length+' cloths. '
+    +'Demand is ours only: <strong>'+(open.length?open.map(function(p){ return esc(p.ref); }).join(', '):'no open containers')+'</strong>'+(plannedItems().length?' and the container being planned':'')+'. '
+    +(cPOs.filter(poShipped).length?'Shipped (cloth already cut, not counted): '+cPOs.filter(poShipped).map(function(p){ return esc(p.ref); }).join(', ')+'. ':'')+'<span style="color:#6b7280">Tick Shipped on a container card to change that.</span>';
+  var counts={critical:0, low:0, ok:0, none:0}; M.order.forEach(function(k){ counts[M.by[k].status]++; });
+  var active=document.getElementById('fabFilter').value;
+  document.getElementById('fabTiles').innerHTML=[
+    {k:'critical', l:'Critical &mdash; short, no PO within '+FABRIC_ETA_WKS+' wks', c:'#b91c1c', n:counts.critical},
+    {k:'low', l:'Low &mdash; short but a PO lands soon, or under a month\'s stock', c:'#92400e', n:counts.low},
+    {k:'ok', l:'OK', c:'#065f46', n:counts.ok},
+    {k:'gaps', l:'Codes needing a cloth or a figure', c:'#5b21b6', n:M.gaps.length}
+  ].map(function(t){ return '<div class="stat tile'+(active===t.k?' tile-active':'')+'" onclick="fabTile(\''+t.k+'\')"><div class="stat-lbl">'+t.l+'</div><div class="stat-val" style="color:'+t.c+'">'+t.n+'</div></div>'; }).join('');
+  var srch=(document.getElementById('fabSearch').value||'').toLowerCase();
+  var list=M.order.map(function(k){ var e=M.by[k]; return {key:k, e:e, L:e.line, code:fabricLineName(k), desc:e.line.descs[0], colour:e.line.colour, onHand:e.line.onHand, onOrder:e.line.onOrder, demand:e.demand, free:e.free, afterPO:e.afterPO, status:e.status, rank:{critical:0,low:1,ok:2,none:3}[e.status]}; });
+  list=list.filter(function(x){
+    if(active==='critical'||active==='low'||active==='ok'){ if(x.status!==active) return false; }
+    else if(active==='issues'){ if(x.status==='ok'||x.status==='none') return false; }
+    else if(active==='demand'){ if(!(x.demand>0)) return false; }
+    if(srch && (x.code+' '+x.desc+' '+x.colour).toLowerCase().indexOf(srch)<0) return false;
+    return true;
+  });
+  var sc=fabSort.col, dir=fabSort.asc?1:-1;
+  list.sort(function(a,b){ var av=sc==='status'?a.rank:a[sc], bv=sc==='status'?b.rank:b[sc]; if(typeof av==='string') return dir*av.localeCompare(bv); if(av===bv) return b.demand-a.demand; return dir*(av-bv); });
+  var hd=function(col,label,right){ return '<th class="'+(right?'':'l ')+'fs" onclick="fabSortBy(\''+col+'\')">'+label+' <span class="parrow">'+(fabSort.col===col?(fabSort.asc?'&#9650;':'&#9660;'):'&#8597;')+'</span></th>'; };
+  var html='<table class="rpt fab"><thead><tr>'+hd('code','Fabric')+'<th class="l">Description</th>'+hd('colour','Colour')+hd('onHand','In stock',1)+hd('onOrder','On PO',1)+hd('demand','Our demand',1)+hd('free','Free',1)+hd('afterPO','After PO',1)+hd('status','Status')+'<th class="l">Next ETA</th></tr></thead><tbody>';
+  if(!list.length) html+='<tr><td colspan="10" style="text-align:center;padding:1rem;color:#6b7280">Nothing matches</td></tr>';
+  list.forEach(function(x){
+    var e=x.e, L=x.L, isOpen=!!fabOpen[x.key];
+    var eta=e.nextEta ? (e.nextEta.date ? fmtD(e.nextEta.date)+' &middot; '+fmM(e.nextEta.qty) : esc(e.nextEta.note||e.nextEta.raw||'')) : (L.onOrder>0?'<span style="color:#92400e">no date</span>':dash());
+    html+='<tr class="fabrow'+(isOpen?' fab-open':'')+'" onclick="fabToggle(\''+esc(x.key)+'\')">'
+      +'<td class="l" style="font-family:monospace;font-weight:700;color:#1F3864;white-space:normal">'+esc(x.code)+'</td>'
+      +'<td class="l" style="white-space:normal;max-width:260px" title="'+esc(L.descs.join(' / '))+'">'+esc(x.desc)+'</td>'
+      +'<td class="l">'+esc(x.colour)+'</td>'
+      +'<td>'+fm(x.onHand)+'</td>'
+      +'<td><span class="fab-link" title="Click for the ETAs">'+(x.onOrder>0?fm(x.onOrder):'&mdash;')+'</span></td>'
+      +'<td><span class="fab-link" title="Click for the containers">'+(x.demand>0?fm(x.demand):'&mdash;')+'</span></td>'
+      +'<td class="'+(x.free<0?'neg':'')+'">'+fm(x.free)+'</td>'
+      +'<td class="'+(x.afterPO<0?'neg':'')+'">'+fm(x.afterPO)+'</td>'
+      +'<td class="l">'+fabricStatusBadge(x.status)+'</td>'
+      +'<td class="l">'+eta+'</td></tr>';
+    if(isOpen) html+='<tr class="fab-detail"><td colspan="10">'+fabricDetailHTML(x)+'</td></tr>';
+  });
+  html+='</tbody></table>';
+  document.getElementById('fabTable').innerHTML=html;
+  document.getElementById('fabCount').textContent=list.length+' of '+M.order.length+' cloths';
+  renderFabricMap();
+}
+function fabTile(k){ var sel=document.getElementById('fabFilter'); if(k==='gaps'){ sel.value=''; renderFabric(); var g=document.getElementById('fabMapBox'); if(g) g.scrollIntoView({behavior:'smooth'}); return; } sel.value=(sel.value===k)?'':k; renderFabric(); }
+function fabricDetailHTML(x){
+  var e=x.e, L=x.L, M=fabricModel;
+  var etas=L.etas.length ? '<table class="ptbl"><thead><tr><th style="text-align:left">On PO</th><th>Metres</th><th style="text-align:left">ETA</th><th>Wks away</th></tr></thead><tbody>'
+    +L.etas.map(function(t){ var late=t.date&&t.date<M.today; return '<tr'+(late?' class="rw-warn"':'')+'><td style="text-align:left;font-family:monospace;font-size:10px">'+esc(t.of)+'</td><td>'+(t.qty!=null?fm(t.qty):'?')+'</td><td style="text-align:left">'+(t.date?fmtD(t.date):'<span style="color:#92400e">'+esc(t.note||t.raw||'no date')+'</span>')+'</td><td>'+(t.date?wksUntil(t.date).toFixed(1):'&mdash;')+'</td></tr>'; }).join('')
+    +'</tbody></table>' : '<p style="color:#6b7280;font-size:11px">Nothing on order.</p>';
+  var sumEta=L.etas.reduce(function(s,t){ return s+(t.qty||0); },0);
+  if(L.onOrder>0 && Math.abs(sumEta-L.onOrder)>L.onOrder*0.01) etas+='<p class="foot">ETA lines total '+fmM(sumEta)+' against '+fmM(L.onOrder)+' on order.</p>';
+  var cover='<table class="ptbl"><thead><tr><th style="text-align:left">Container</th><th style="text-align:left">Arrives</th><th>Units</th><th>Metres</th><th>Stock after</th><th style="text-align:left">Cover</th></tr></thead><tbody>'
+    +'<tr><td style="text-align:left;color:#6b7280">In stock now</td><td></td><td></td><td></td><td style="font-weight:700">'+fm(L.onHand)+'</td><td></td></tr>'
+    +e.byPO.map(function(p){
+      var cov=p.short>0 ? (p.coverDate ? ((p.coverDate<=M.cutoff)?'<span style="color:#92400e;font-weight:600">&#9888; short '+fmM(p.short)+', PO lands '+fmtD(p.coverDate)+'</span>':'<span style="color:#b91c1c;font-weight:700">&#10006; short '+fmM(p.short)+', PO lands '+fmtD(p.coverDate)+' ('+wksUntil(p.coverDate).toFixed(1)+' wks)</span>') : '<span style="color:#b91c1c;font-weight:700">&#10006; short '+fmM(p.short)+', no PO covers it</span>') : '<span style="color:#065f46">&#10003;</span>';
+      var top=Object.keys(p.codes).sort(function(a,b){ return p.codes[b]-p.codes[a]; }).slice(0,6).map(function(c){ return esc(c)+' '+fm(p.codes[c])+' m'; }).join(', ');
+      return '<tr'+(p.short>0?' class="rw-neg"':'')+'><td style="text-align:left;font-weight:600">'+esc(p.ref)+(p.planned?' <span class="badge bb">planning</span>':'')+'</td><td style="text-align:left">'+fmtD(p.date)+'</td><td>'+fm(p.units)+'</td><td>'+fm(p.m)+'</td><td style="font-weight:700;color:'+(p.after<0?'#b91c1c':'#111827')+'">'+fm(p.after)+'</td><td style="text-align:left">'+cov+'<div style="font-size:10px;color:#6b7280">'+top+'</div></td></tr>';
+    }).join('')
+    +'</tbody></table>';
+  if(!e.byPO.length) cover='<p style="color:#6b7280;font-size:11px">No open container takes this cloth.</p>';
+  var ck='<p class="foot">Clockwork\'s own figures: job demand '+fmM(L.jobDemand)+' (all their customers), safety stock '+fmM(L.safety)+', average monthly usage '+fmM(L.avgMonthly)+'.</p>';
+  return '<div class="fab-grid"><div><h4>&#128230; On PO &mdash; ETAs</h4>'+etas+'</div><div><h4>&#128682; Our demand, cut in priority order</h4>'+cover+ck+'</div></div>';
+}
+// The mapping panel: every style (stem + colour) on the open containers and
+// in the planner, what it resolved to and why; gaps first, with a fabric
+// pick and a metres box that then covers every size of the style.
+function renderFabricMap(){
+  var box=document.getElementById('fabMapRows'); if(!box) return;
+  var M=fabricModel, groups={}, order=[];
+  var addItem=function(code, qty, where){
+    var k=fabricMapKey(code); var g=groups[k];
+    if(!g){ var rr=rows.find(function(x){ return x.code.toUpperCase()===code.toUpperCase(); }); g=groups[k]={key:k, code:code, desc:rr?rr.desc:'', units:0, open:0, where:{}}; order.push(k); }
+    g.units+=qty; if(where!=='planner') g.open+=qty; if(where) g.where[where]=true;
+  };
+  M.pos.forEach(function(po){ po.items.forEach(function(it){ addItem(it.code, it.qty||0, po.ref); }); });
+  if(fabShowAllMap) rows.forEach(function(r){ addItem(r.code, 0, 'planner'); });
+  var list=order.map(function(k){ var g=groups[k]; g.res=resolveCode(g.code, g.desc); g.ov=fabricMap[k]||null; return g; });
+  if(!fabShowAllMap) list=list.filter(function(g){ return g.res.gap || g.ov; });
+  list.sort(function(a,b){ var ga=a.res.gap?0:1, gb=b.res.gap?0:1; if(ga!==gb) return ga-gb; return b.units-a.units; });
+  var opts='<option value="">(auto)</option>'+fabricLines().order.map(function(k){ var L=fabricLine(k); return '<option value="'+esc(k)+'">'+esc(fabricLineName(k))+' &mdash; '+esc(L.colour)+'</option>'; }).join('');
+  document.getElementById('fabMapCount').textContent=list.length?(fabShowAllMap?list.length+' styles':list.length+' to look at'):'';
+  if(!list.length){ box.innerHTML='<p style="font-size:12px;color:#065f46;padding:6px 0">&#10003; Every code on the open containers has a cloth and a figure.</p>'; return; }
+  box.innerHTML='<div style="overflow-x:auto"><table class="ptbl"><thead><tr><th style="text-align:left">Style</th><th style="text-align:left">Example</th><th>Units open</th><th style="text-align:left">Cloth</th><th>m / garment</th><th>Mesh m</th><th style="text-align:left">How</th><th class="edit-only"></th></tr></thead><tbody>'
+    +list.map(function(g){
+      var r=g.res, ov=g.ov||{}, id=sid(g.key);
+      var how=(r.gap==='fabric'?'<span class="badge br">no cloth</span> ':r.gap==='metres'?'<span class="badge ba">no figure</span> ':'')+esc(r.how||'')+(r.m>0?' &middot; '+esc(r.mSrc):'')+(r.mesh?' &middot; mesh '+esc(r.mesh.fab)+' '+r.mesh.m+' m ('+esc(r.mesh.src)+')':'');
+      var fabCell=IS_EDITOR ? '<select class="map-input" style="width:230px" id="fmf-'+id+'">'+opts+'</select>' : esc(r.fabName||'');
+      var mCell=IS_EDITOR ? '<input class="map-input num" id="fmm-'+id+'" value="'+(ov.m>0?ov.m:'')+'" placeholder="'+(r.m>0?r.m:'')+'">' : (r.m>0?r.m:'');
+      var meshCell=IS_EDITOR ? '<input class="map-input num" id="fme-'+id+'" value="'+(ov.mesh!=null&&ov.mesh!==''?ov.mesh:'')+'" placeholder="'+(r.mesh?r.mesh.m:'0')+'">' : (r.mesh?r.mesh.m:'');
+      var pos=Object.keys(g.where).filter(function(x){ return x!=='planner'; }).join(', ');
+      return '<tr'+(r.gap?' class="rw-neg"':'')+'><td style="text-align:left;font-family:monospace;font-weight:600">'+esc(g.key.replace('|',' colour '))+'</td><td style="text-align:left;max-width:220px;overflow:hidden;text-overflow:ellipsis" title="'+esc(g.desc)+'">'+esc(g.code)+(g.desc?' &middot; <span style="color:#6b7280">'+esc(g.desc)+'</span>':'')+'</td><td title="'+esc(pos)+'">'+fm(g.open)+'</td><td style="text-align:left">'+fabCell+'</td><td>'+mCell+'</td><td>'+meshCell+'</td><td style="text-align:left;font-size:10px;color:#4b5563">'+how+'</td>'
+        +'<td class="edit-only" style="white-space:nowrap"><button class="btn btn-p" style="font-size:10px;padding:2px 7px" onclick="saveFabricMap(\''+esc(g.key)+'\')">Save</button>'+(g.ov?' <button class="btn" style="font-size:10px;padding:2px 7px" onclick="clearFabricMap(\''+esc(g.key)+'\')" title="Back to automatic">&#10005;</button>':'')+'</td></tr>';
+    }).join('')+'</tbody></table></div>';
+  if(IS_EDITOR) list.forEach(function(g){ var s=document.getElementById('fmf-'+sid(g.key)); if(s) s.value=(g.ov&&g.ov.fab)?fabricPool(g.ov.fab):''; });
+}
+function saveFabricMap(key){ if(!IS_EDITOR) return;
+  var id=sid(key), fab=(document.getElementById('fmf-'+id)||{}).value||'', m=parseFloat((document.getElementById('fmm-'+id)||{}).value), mesh=(document.getElementById('fme-'+id)||{}).value;
+  var o={at:new Date().toISOString()};
+  if(fab) o.fab=fab;
+  if(m>0) o.m=m;
+  if(mesh!=='' && mesh!==undefined){ var mm=parseFloat(mesh); if(!isNaN(mm) && mm>=0) o.mesh=mm; }
+  if(!o.fab && !(o.m>0) && o.mesh===undefined){ delete fabricMap[key]; } else fabricMap[key]=o;
+  bumpFabricMap(); saveState(); recalcFabricAll();
+}
+function clearFabricMap(key){ if(!IS_EDITOR) return; delete fabricMap[key]; bumpFabricMap(); saveState(); recalcFabricAll(); }
+function recalcFabricAll(){ _lineCache=null; fabricRefresh(); }
+
+// ── Import ───────────────────────────────────────────────────────────────────
+// The report is read in the browser: the .xlsx straight from the file box
+// (it is a zip of XML, inflated with the browser's own DecompressionStream),
+// or the sheet pasted from Excel. Column headings are matched by name, so
+// column order does not matter; every column headed ETA is read.
+function fabricImportClick(){ if(!IS_EDITOR) return; var f=document.getElementById('fabFile'); if(f){ f.value=''; f.click(); } }
+function fabricImportFile(inp){ if(!IS_EDITOR) return;
+  var file=inp.files&&inp.files[0]; if(!file) return;
+  var fr=new FileReader();
+  fr.onload=function(){ readXlsxGrid(fr.result).then(function(grid){ fabricImportGrid(grid, file.name); }).catch(function(e){ alert('Could not read the file: '+(e&&e.message||e)+'\n\nSave it as .xlsx, or copy the sheet and use Paste instead.'); }); };
+  fr.readAsArrayBuffer(file);
+}
+function fabricImportPaste(){ if(!IS_EDITOR) return;
+  var txt=(document.getElementById('fabTA').value||'').replace(/\r/g,'');
+  if(!txt.trim()){ alert('Nothing pasted — copy the report sheet (headings included) and paste it in the box.'); return; }
+  var grid=txt.split('\n').map(function(l){ return l.split('\t'); });
+  fabricImportGrid(grid, 'pasted');
+}
+function fabricImportGrid(grid, fileName){
+  var rep=parseFabricGrid(grid);
+  if(!rep || !rep.fabrics.length){ alert('No fabric rows found. The sheet needs the headings StockCode, Description, QtyOnHand, QtyOnOrder and the styles column (Column1), with the ETA columns after.'); return; }
+  var dateEl=document.getElementById('fabDate'), rd=(dateEl&&dateEl.value)||d2s(now());
+  rep.fabrics.forEach(function(f){ f.etas=f.etasRaw.map(function(raw){ return parseEta(raw, rd); }).filter(Boolean); delete f.etasRaw; });
+  var nDated=rep.fabrics.reduce(function(s,f){ return s+f.etas.filter(function(e){ return e.date; }).length; },0), nEta=rep.fabrics.reduce(function(s,f){ return s+f.etas.length; },0);
+  var unknown=rep.fabrics.filter(function(f){ return !f.styles; }).length;
+  if(!confirm('Import '+rep.fabrics.length+' cloths from the Clockwork report dated '+fmtD(rd)+'?\n\n'+nEta+' ETA lines, '+nDated+' with a date'+(unknown?'; '+unknown+' cloths with no styles listed':'')+'.\n\nThis replaces the report imported before; mappings set on this tab are kept.')) return;
+  fabricReport={reportDate:rd, importedAt:new Date().toISOString(), fileName:fileName||'', fabrics:rep.fabrics};
+  _lineCache=null; _resolveCache={};
+  document.getElementById('fabImportBox').classList.add('hidden');
+  var ta=document.getElementById('fabTA'); if(ta) ta.value='';
+  saveState(); fabricRefresh(); renderFabric();
+}
+function parseFabricGrid(grid){
+  var norm=function(s){ return String(s==null?'':s).toLowerCase().replace(/[^a-z0-9]/g,''); };
+  var hdrIdx=-1, cols={};
+  for(var i=0;i<grid.length && i<40;i++){ var names=(grid[i]||[]).map(norm); var ci=names.indexOf('stockcode'); if(ci>=0 && names.indexOf('qtyonhand')>=0){ hdrIdx=i; names.forEach(function(n,j){ if(n==='eta'){ (cols.eta=cols.eta||[]).push(j); } else if(n && cols[n]===undefined) cols[n]=j; }); break; } }
+  if(hdrIdx<0) return null;
+  var get=function(row,name){ var j=cols[name]; return j===undefined?'':row[j]; };
+  var styleCol=cols.column1!==undefined?cols.column1:(cols.styles!==undefined?cols.styles:(cols.style!==undefined?cols.style:cols.stockcode+2));
+  // Every column after "Free stock" (or after the last known heading) that
+  // carries something is an ETA column too, headed or not.
+  var known=Object.keys(cols).filter(function(k){ return k!=='eta'; }).map(function(k){ return cols[k]; });
+  var lastKnown=Math.max.apply(null, known.concat([-1]));
+  var etaCols=(cols.eta||[]).slice();
+  for(var j=lastKnown+1;j<(grid[hdrIdx]||[]).length+6;j++) if(etaCols.indexOf(j)<0) etaCols.push(j);
+  if(cols.eta) cols.eta.forEach(function(j){ if(etaCols.indexOf(j)<0) etaCols.push(j); });
+  etaCols.sort(function(a,b){ return a-b; });
+  var fabrics=[], started=false;
+  for(var r=hdrIdx+1;r<grid.length;r++){
+    var row=grid[r]||[], code=String(get(row,'stockcode')||'').trim().toUpperCase();
+    if(!code){ if(started) break; else continue; }
+    if(norm(code)==='stockcode') break;
+    started=true;
+    var etasRaw=etaCols.map(function(j){ return row[j]; }).filter(function(v){ return v!==undefined && v!==null && String(v).trim()!==''; });
+    fabrics.push({wh:String(get(row,'warehouse')||'').trim(), code:code, desc:String(get(row,'description')||'').trim(), styles:String(row[styleCol]||'').trim(),
+      onHand:pn(String(get(row,'qtyonhand')||'')), onOrder:pn(String(get(row,'qtyonorder')||'')), safety:pn(String(get(row,'safetystockqty')||'')), jobDemand:pn(String(get(row,'jobdemand')||'')), avgMonthly:pn(String(get(row,'avgmonthlyusage')||'')), totalDemand:pn(String(get(row,'totaldemand')||'')), etasRaw:etasRaw});
+  }
+  return {fabrics:fabrics};
+}
+// "10013.7M  OCT 25", "25012.50 M NOV.23", "5000M ETA DEC. 15", "30000M IN
+// PRODUCTION", "3000 TBC", or a real date: metres, and the date if it has
+// one. The year is the report's, or the next one once the month is behind
+// the report date.
+var MONTHS={JAN:0,FEB:1,MAR:2,APR:3,MAY:4,JUN:5,JUL:6,AUG:7,SEP:8,SEPT:8,OCT:9,NOV:10,DEC:11};
+function parseEta(raw, reportDate){
+  if(raw===undefined || raw===null) return null;
+  var out={qty:null, date:null, note:'', raw:''};
+  if(raw instanceof Date){ out.date=d2s(raw); out.raw=d2s(raw); return out; }
+  if(typeof raw==='number'){ if(raw>30000 && raw<80000){ out.date=d2s(new Date(Date.UTC(1899,11,30)+raw*864e5)); out.raw=out.date; } else { out.qty=raw; out.raw=String(raw); } return out; }
+  var s=String(raw).trim(); if(!s) return null;
+  out.raw=s;
+  var iso=/^(\d{4})-(\d{2})-(\d{2})/.exec(s); if(iso){ out.date=iso[0]; return out; }
+  var up=s.toUpperCase();
+  var q=/(-?[\d,]*\.?\d+)\s*M?\b/.exec(up); if(q){ out.qty=pn(q[1]); up=up.slice(q.index+q[0].length); }
+  var m=/(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*\.?\s*(\d{1,2})?/.exec(up);
+  var rd=reportDate?new Date(reportDate):now(), y=rd.getFullYear();
+  if(m){
+    var mo=MONTHS[m[1]], day=m[2]?parseInt(m[2],10):1;
+    if(mo<rd.getMonth()-1) y+=1;
+    var d=new Date(y,mo,Math.min(day,28)); if(day>28) d=new Date(y,mo,day);
+    out.date=d2s(d);
+  } else {
+    var dm=/(\d{1,2})[\/.](\d{1,2})(?:[\/.](\d{2,4}))?/.exec(up);
+    if(dm){ var yy=dm[3]?parseInt(dm[3],10):y; if(yy<100) yy+=2000; out.date=d2s(new Date(yy,parseInt(dm[2],10)-1,parseInt(dm[1],10))); }
+    else out.note=up.replace(/^\s*(ETA)?\s*/,'').trim()||'no date';
+  }
+  return out;
+}
+// A minimal .xlsx reader: the zip directory, each part inflated by the
+// browser, shared strings, and the first sheet's cells as a grid.
+function readXlsxGrid(buf){
+  var u8=new Uint8Array(buf), dv=new DataView(buf), dec=new TextDecoder();
+  var eocd=-1; for(var i=u8.length-22;i>=Math.max(0,u8.length-70000);i--){ if(dv.getUint32(i,true)===0x06054b50){ eocd=i; break; } }
+  if(eocd<0) return Promise.reject(new Error('not a .xlsx file'));
+  var n=dv.getUint16(eocd+10,true), p=dv.getUint32(eocd+16,true), entries={};
+  for(var k=0;k<n;k++){ if(dv.getUint32(p,true)!==0x02014b50) break; var method=dv.getUint16(p+10,true), csize=dv.getUint32(p+20,true), nlen=dv.getUint16(p+28,true), elen=dv.getUint16(p+30,true), clen=dv.getUint16(p+32,true), loff=dv.getUint32(p+42,true); var name=dec.decode(u8.subarray(p+46,p+46+nlen)); entries[name]={method:method, csize:csize, loff:loff}; p+=46+nlen+elen+clen; }
+  function part(name){
+    var e=entries[name]; if(!e) return Promise.resolve(null);
+    var q=e.loff, nl=dv.getUint16(q+26,true), xl=dv.getUint16(q+28,true), data=u8.subarray(q+30+nl+xl, q+30+nl+xl+e.csize);
+    if(e.method===0) return Promise.resolve(dec.decode(data));
+    if(typeof DecompressionStream==='undefined') return Promise.reject(new Error('this browser cannot unpack .xlsx; paste the sheet instead'));
+    return new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text();
+  }
+  var xml=function(t){ return new DOMParser().parseFromString(t,'application/xml'); };
+  var all=function(doc, tag){ return Array.prototype.slice.call(doc.getElementsByTagName(tag)); };
+  return Promise.all([part('xl/workbook.xml'), part('xl/_rels/workbook.xml.rels'), part('xl/sharedStrings.xml')]).then(function(parts){
+    var sheetPath='xl/worksheets/sheet1.xml';
+    try{
+      var wb=xml(parts[0]), sh=all(wb,'sheet')[0], rid=sh&&(sh.getAttribute('r:id')||sh.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships','id'));
+      if(rid && parts[1]){ var rel=all(xml(parts[1]),'Relationship').find(function(x){ return x.getAttribute('Id')===rid; }); if(rel){ var t=rel.getAttribute('Target').replace(/^\//,''); sheetPath=t.indexOf('xl/')===0?t:'xl/'+t; } }
+    }catch(e){}
+    var strings=[];
+    if(parts[2]) all(xml(parts[2]),'si').forEach(function(si){ strings.push(all(si,'t').map(function(t){ return t.textContent; }).join('')); });
+    return part(sheetPath).then(function(sx){
+      if(!sx) throw new Error('no worksheet in the file');
+      var doc=xml(sx), grid=[];
+      all(doc,'row').forEach(function(rowEl){
+        var ri=parseInt(rowEl.getAttribute('r'),10)-1, line=grid[ri]=grid[ri]||[];
+        all(rowEl,'c').forEach(function(c){
+          var ref=c.getAttribute('r')||'', col=0, letters=/^[A-Z]+/.exec(ref); if(letters) for(var z=0;z<letters[0].length;z++) col=col*26+(letters[0].charCodeAt(z)-64); col-=1;
+          var t=c.getAttribute('t'), v=c.getElementsByTagName('v')[0], val='';
+          if(t==='s'){ val=strings[parseInt(v?v.textContent:'0',10)]||''; }
+          else if(t==='inlineStr'){ val=all(c,'t').map(function(x){ return x.textContent; }).join(''); }
+          else if(t==='str' || t==='b' || t==='e'){ val=v?v.textContent:''; }
+          else { val=v?(v.textContent===''?'':Number(v.textContent)):''; if(typeof val==='number' && isNaN(val)) val=v.textContent; }
+          line[col]=val;
+        });
+      });
+      for(var g=0;g<grid.length;g++) if(!grid[g]) grid[g]=[];
+      return grid;
+    });
+  });
+}
+
 var currentTab='planner';
 function showTab(t){
   currentTab=t;
   document.getElementById('plannerView').classList.toggle('hidden', t!=='planner');
   document.getElementById('reportView').classList.toggle('hidden', t!=='reports');
+  document.getElementById('fabricView').classList.toggle('hidden', t!=='fabric');
   document.getElementById('tab-planner').classList.toggle('tab-active', t==='planner');
   document.getElementById('tab-reports').classList.toggle('tab-active', t==='reports');
+  document.getElementById('tab-fabric').classList.toggle('tab-active', t==='fabric');
   if(t==='reports') renderReport();
+  if(t==='fabric'){ var fd=document.getElementById('fabDate'); if(fd && !fd.value) fd.value=d2s(now()); renderFabric(); }
 }
 
 // ── Customer reports ───────────────────────────────────────────────────────
@@ -2879,7 +3535,7 @@ function pubSetup(){ if(!IS_EDITOR) return;
 }
 function pubRefreshBtn(){ var b=document.getElementById('pubSetupBtn'); if(b) b.innerHTML=pubToken()?'&#9881; Token':'&#9881; Set up this PC'; var pb=document.getElementById('publishBtn'); if(pb) pb.title=pubToken()?'Puts data.json into the repo; the team sees it within a minute':'Downloads data.json to upload to the repo (Set up this PC to publish straight from here)'; }
 function pubB64(s){ return btoa(unescape(encodeURIComponent(s))); }
-function publishState(){ return JSON.stringify({rows:rows, cPOs:cPOs, bookedPOs:bookedPOs, nextContDate:nextContDate, customerMaps:customerMaps, containerAliases:containerAliases, savedAt:new Date().toISOString()}, stripInHouse); }
+function publishState(){ return JSON.stringify({rows:rows, cPOs:cPOs, bookedPOs:bookedPOs, nextContDate:nextContDate, customerMaps:customerMaps, containerAliases:containerAliases, fabricReport:fabricReport, fabricMap:fabricMap, savedAt:new Date().toISOString()}, stripInHouse); }
 function publishDownload(json, why){
   var blob = new Blob([json], {type:'application/json'});
   var a = document.createElement('a');
@@ -2958,7 +3614,7 @@ function dbSave(){ clearTimeout(saveTimer); saveTimer=setTimeout(saveState,1200)
 function saveState(){
   var json='';
   try{
-    json=JSON.stringify({rows:rows,cPOs:cPOs,bookedPOs:bookedPOs,nextContDate:nextContDate,customerMaps:customerMaps,containerAliases:containerAliases,savedAt:new Date().toISOString()}, stripInHouse);
+    json=JSON.stringify({rows:rows,cPOs:cPOs,bookedPOs:bookedPOs,nextContDate:nextContDate,customerMaps:customerMaps,containerAliases:containerAliases,fabricReport:fabricReport,fabricMap:fabricMap,savedAt:new Date().toISOString()}, stripInHouse);
   }catch(e){ console.log('Save failed:',e); saveFailed('could not serialise'); return; }
   var localOK=false;
   try{ localStorage.setItem('tibard_v5',json); localOK=true; }catch(e){ console.log('localStorage save failed:',e); }
@@ -2980,6 +3636,7 @@ function applyState(s){
     stateLoadedAt=s.savedAt||''; legacyPrices=null;
     if(!s.rows||!s.rows.length) return false;
     rows=s.rows; cPOs=s.cPOs||[]; bookedPOs=s.bookedPOs||[]; ensureUIDs(); nextContDate=s.nextContDate||null; customerMaps=s.customerMaps||{}; containerAliases=s.containerAliases||{};
+    fabricReport=(s.fabricReport&&s.fabricReport.fabrics)?s.fabricReport:null; fabricMap=s.fabricMap||{}; _lineCache=null; _resolveCache={};
     // Prices used to travel in this state; pricesLocalLoad takes them over once
     if(s.ckwPrices&&typeof s.ckwPrices==='object'&&Object.keys(s.ckwPrices).length) legacyPrices={ckwPrices:s.ckwPrices, ckwPricesAt:s.ckwPricesAt||s.savedAt||''};
     var sa=s.savedAt?new Date(s.savedAt).toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}):'';
@@ -3015,7 +3672,7 @@ function clearAll(){
   try{
     localStorage.removeItem('tibard_v5');
     try{ idbOpen(function(db){ if(!db) return; try{ db.transaction(IDB_STORE,'readwrite').objectStore(IDB_STORE).delete('state'); }catch(e){} }); }catch(e){}
-    rows=[];cPOs=[];bookedPOs=[];nextContDate=null;customerMaps={};containerAliases={};
+    rows=[];cPOs=[];bookedPOs=[];nextContDate=null;customerMaps={};containerAliases={};fabricReport=null;fabricMap={};_lineCache=null;_resolveCache={};fabricModel=null;
     document.getElementById('dataWrap').classList.add('hidden');
     document.getElementById('uzone').classList.remove('hidden');
     document.getElementById('sbar').style.display='none';
@@ -3034,6 +3691,7 @@ function fetchSharedData(cb){
   }).then(function(s){
     if(s && s.rows && s.rows.length){
       rows = s.rows; ensureUIDs(); cPOs = s.cPOs || []; bookedPOs = s.bookedPOs || []; nextContDate = s.nextContDate || null; customerMaps = s.customerMaps || {}; containerAliases = s.containerAliases || {};
+      fabricReport=(s.fabricReport&&s.fabricReport.fabrics)?s.fabricReport:null; fabricMap=s.fabricMap||{}; _lineCache=null; _resolveCache={};
       var sa = s.savedAt ? new Date(s.savedAt).toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
       document.getElementById('lastUpdated').textContent = 'Published: ' + sa;
       var bd = document.getElementById('bannerDate');
@@ -3052,6 +3710,7 @@ document.addEventListener('DOMContentLoaded',function(){
   // ?tab=reports opens straight onto the Customer reports tab (the report
   // re-renders itself once the data has loaded)
   if(/[?&]tab=reports\b/.test(window.location.search)) showTab('reports');
+  if(/[?&]tab=fabric\b/.test(window.location.search)) showTab('fabric');
   // Editor: load their own working copy from localStorage first; fall back to shared
   // Viewer: always load the shared published data.json
   // Either way, the production planner's live works orders are read afterwards.
