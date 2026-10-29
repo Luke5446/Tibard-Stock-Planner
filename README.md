@@ -140,9 +140,20 @@ container is being planned rather than when Clockwork say so.
 - **The table**: cloth, description, colour, in stock, on PO, our demand,
   free (in stock − demand), after PO, status and the next ETA. Click a row
   for the ETA lines and the container-by-container cover; click a heading
-  to sort. *Critical* is short with no PO landing within 2 weeks; *Low* is
-  short but covered by a PO within 2 weeks, or free stock under a month of
+  to sort. *Critical* is short with no PO landing within 3 weeks; *Low* is
+  short but covered by a PO within 3 weeks, or free stock under a month of
   Clockwork's own average usage.
+- **The container PO check** (29 Oct 2026). On the day a container PO is
+  created, when it is saved to the tracker or its Sage PO file is made,
+  every cloth it cuts is checked, after the containers ahead of it in
+  priority: enough at Clockwork, or short but their cloth PO lands within
+  3 weeks of that day, is OK; short with the cloth landing later, or no
+  cloth PO at all, is **Check with supplier**, to confirm with Clockwork
+  before committing. The result and its date sit on the container's card
+  (`fabricCheck` on the PO), the Sage PO file asks before going ahead on a
+  flag, and the check runs again when the container's lines change or the
+  badge on the card is clicked. Codes with no cloth or metres figure are
+  listed as unchecked.
 - **Our demand** is the metres the open containers will cut, in priority
   order: air freight first, then the C numbers in order, then the container
   being planned on the Stock planner tab. A container is **shipped** (its
@@ -151,7 +162,7 @@ container is being planned rather than when Clockwork say so.
   container within 5 weeks are taken as shipped.
 - **The planner's Fabric column** shows, for each code, the free metres of
   its cloth once everything above is cut, and updates as the Actual cartons
-  change. Short, it shows the PO ETA that covers it: amber within 2 weeks,
+  change. Short, it shows the PO ETA that covers it: amber within 3 weeks,
   red beyond (the date the cartons could go on), or "no PO".
 - **Which cloth a code takes** comes from Clockwork's own style list on the
   report, with the colour in our Sage description choosing between cloths

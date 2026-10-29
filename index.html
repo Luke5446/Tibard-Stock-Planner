@@ -576,7 +576,7 @@ body.viewer-mode .view-only{display:block !important}
     <div id="fabWrap" class="hidden">
       <div class="stats" id="fabTiles"></div>
       <div class="twrap"><div class="tscroll" id="fabTable"></div></div>
-      <p class="foot"><strong>In stock</strong> and <strong>On PO</strong> are Clockwork's metres. <strong>Our demand</strong> = metres the open (unshipped) containers and the cartons being planned will cut. <strong>Free</strong> = in stock &minus; our demand; <strong>After PO</strong> = free + on PO. <span class="badge br">Critical</span> short, and no PO lands within 2 weeks to cover it. <span class="badge ba">Low</span> short but a PO lands within 2 weeks, or free is under a month of Clockwork's average usage. Click a row for the ETAs and the container-by-container cover; click a heading to sort.</p>
+      <p class="foot"><strong>In stock</strong> and <strong>On PO</strong> are Clockwork's metres. <strong>Our demand</strong> = metres the open (unshipped) containers and the cartons being planned will cut. <strong>Free</strong> = in stock &minus; our demand; <strong>After PO</strong> = free + on PO. <span class="badge br">Critical</span> short, and no PO lands within 3 weeks to cover it. <span class="badge ba">Low</span> short but a PO lands within 3 weeks, or free is under a month of Clockwork's average usage. When a container PO is created, every cloth it cuts is checked the same way as of that day and the result sits on its card: <strong>Fabric OK</strong>, or <strong>Check with supplier</strong> where the cloth is short and Clockwork's cloth PO lands more than 3 weeks out. Click a row for the ETAs and the container-by-container cover; click a heading to sort.</p>
       <div class="pbox" id="fabMapBox" style="margin-top:12px">
         <h3 style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">&#128279; Codes and their cloth <span id="fabMapCount" class="rc" style="margin-left:0"></span> <label style="font-size:11px;font-weight:400;color:#4b5563;display:flex;align-items:center;gap:4px;margin-left:auto"><input type="checkbox" onchange="fabShowAllMap=this.checked;renderFabric()"> show every style, not only the gaps</label></h3>
         <p>A code's cloth comes from Clockwork's own style list on the report, its colour from our Sage description, and its metres per garment from the production planner's costing figures (a customer variant without one takes its base style's). Anything that cannot be worked out is listed here: pick the cloth, type the metres, press Save, and every size of that style follows. The planner's Fabric column shows <strong>?</strong> for a code with no cloth.</p>
@@ -1080,13 +1080,16 @@ function savePO(){ if(!IS_EDITOR) return;
     items.push({code:code, qty:qty});
   }
   if(!items.length){ alert('No valid rows.\n\nSelect columns B through F from your container Excel, paste here.'); return; }
-  cPOs.push({ref:ref, date:date, items:items});
+  var newPO={ref:ref, date:date, items:items};
+  cPOs.push(newPO);
+  var fc=stampFabricCheck(newPO);   // the container PO check, as of today
   document.getElementById('poRef').value='';
   document.getElementById('poDate').value='';
   document.getElementById('poTA').value='';
   hidePOForm();
   recalcContainers(); recalcQtys(); updateStats(); renderTable(); renderPOCards(); renderProj(); renderRW(); updateCapSum();
   saveState();
+  if(fc) alert(fabricCheckText(newPO, fc));
 }
 
 // Drop all delayed what-if flags for a container ref. Called when a PO is
@@ -1621,6 +1624,7 @@ function renderPOCards(){
       +'<div style="font-size:11px;color:#4b5563"><strong>'+po.items.length+'</strong> SKUs | <strong>'+tot.toLocaleString()+'</strong> units</div>'
       +'<div style="font-size:11px;color:#4b5563;margin-top:2px">&#128682; '+crtH+'</div>'
       +'<div style="font-size:10px;margin-top:3px"><label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;color:'+(poShipped(po)?'#065f46':'#92400e')+'" title="Shipped: Clockwork have cut and packed it, so its cloth no longer counts as demand on the Fabric usage tab. Untouched, air freight within 2 weeks of landing and a sea container within 5 weeks count as shipped." onclick="event.stopPropagation()"><input type="checkbox" class="edit-only" '+(poShipped(po)?'checked':'')+' onchange="setShipped('+i+',this.checked)" style="accent-color:#065f46;margin:0">'+(poShipped(po)?'&#10003; Shipped, cloth cut':'&#9986; Cloth still to cut')+(po.shipped===undefined?' <span style="color:#9ca3af">(auto)</span>':'')+'</label></div>'
+      +fabricCheckHTML(po, i)
       +(IS_EDITOR&&priceCount()?(function(){ var cv=containerValue(po.items); return '<div class="edit-only" style="font-size:11px;color:#1F3864;margin-top:2px">&asymp; <strong>'+fUSD(cv.value)+'</strong>'+(cv.unpriced.length?' <span style="color:#92400e" title="'+esc(cv.unpriced.join(', '))+'">+'+cv.unpriced.length+' unpriced</span>':'')+'</div>'; })():'')
       +'<div style="font-size:10px;color:#1F3864;margin-top:4px;font-weight:600">'+((selectedPO===po.ref)?'&#9650; Hide details':'&#9660; Click to view contents')+'</div>'
       +'<button class="btn edit-only" style="font-size:10px;padding:4px 8px;margin-top:6px;width:100%;color:#065f46;border-color:#a7d4bb" onclick="event.stopPropagation();bookInPO('+i+')">&#10003; Mark as booked in</button>'
@@ -1683,6 +1687,8 @@ function exportSagePO(i){
   if(!priceCount() && !confirm('No Clockwork price list on this PC, so every line will have a blank unit price, and the Sage import fails on a blank price.\n\nPaste the Data tab into the Clockwork prices panel first, or make the file anyway?')) return;
   var pre=sagePORows(po,'');
   if(priceCount() && pre.unpriced.length && !confirm(pre.unpriced.length+' line'+(pre.unpriced.length===1?' has':'s have')+' no price on the list: '+pre.unpriced.slice(0,8).join(', ')+(pre.unpriced.length>8?' and '+(pre.unpriced.length-8)+' more':'')+'.\n\nThe Sage import fails on a blank price (C128, 19 Oct 2026). Add them to the Clockwork prices panel first, or make the file anyway and fill them in by hand?')) return;
+  var fc=stampFabricCheck(po);   // the container PO check, as of today
+  if(fc && fc.flags.length && !confirm(fabricCheckText(po, fc)+'\n\nMake the Sage PO file anyway?')){ saveState(); renderPOCards(); return; }
   var docNo=prompt('Reference for this purchase order (goes on every line as the supplier document number):', String(po.ref||'').replace(/\s+(revised|addition.*)$/i,'').trim());
   if(docNo===null) return;
   docNo=docNo.trim();
@@ -1788,6 +1794,8 @@ function savePOEdits(){ if(!IS_EDITOR || !poEditMode) return;
       if(!po.items.some(function(i){ return i.code===code; })) delete delayedItems[po.ref+'|'+code];
     });
   poEditMode=false; pendingPOEdits={};
+  var touched={}; edits.forEach(function(e){ touched[e.poIdx]=true; });
+  Object.keys(touched).forEach(function(k){ if(cPOs[k]&&cPOs[k].fabricCheck) stampFabricCheck(cPOs[k]); });   // lines changed, check the cloth again
   recalcContainers(); recalcQtys(); updateStats(); renderTable(); renderPOCards(); renderProj(); renderRW(); updateCapSum();
   saveState();
 }
@@ -1837,6 +1845,7 @@ function savePOAddLine(){ if(!IS_EDITOR || !selectedPO) return;
   } else {
     po.items.push({code:code, qty:qty});
   }
+  if(po.fabricCheck) stampFabricCheck(po);   // a new line, check the cloth again
   hidePOAddLine();
   recalcContainers(); recalcQtys(); updateStats(); renderTable(); renderPOCards(); renderProj(); renderRW(); updateCapSum();
   saveState();
@@ -2575,7 +2584,7 @@ var CKW_USAGE={"ABSCICJ01935201":[1.25,0.0],"ABSCICJ01935401":[1.25,0.0],"ABSCIC
 var fabricReport=null;   // {reportDate, importedAt, fileName, fabrics:[{wh,code,desc,styles,onHand,onOrder,safety,jobDemand,avgMonthly,etas:[{qty,date,note,raw}]}]}
 var fabricMap={};        // {key: {fab, m, mesh, at}}  key = a code, or STEM|COLOUR for every size of a style
 var FABRIC_POOLS=[['1RBBLACKPRECURE','1RBTEREDOBLKVATDYE']];   // interchangeable cloths counted as one line (Luke, 24 Oct 2026)
-var FABRIC_ETA_WKS=2;    // a PO landing within this many weeks still counts as cover (shown Low, not Critical)
+var FABRIC_ETA_WKS=3;    // a cloth PO landing within this many weeks of today still counts as cover (Low, not Critical) and passes the container PO check (Luke, 29 Oct 2026: 3 weeks)
 var MESH_DEFAULT_M=0.12; // mesh per garment where the lay plan has no figure (assumed; shown as such)
 var FABRIC_CUST=/^(ABS|ALS|ANG|ASK|BC|BEEF|BE|BID|CAR|FB|INN|MIL|MVS|PE|SL|TGI|TW|WAG|YO)(?=(CI|CJ|CT|AP|HT|TB|WT|WCL|NOTS))/;
 var FABRIC_SIZES=(function(){ var m={}; for(var n=6;n<=60;n+=2) m[('0'+n).slice(-2)]=true; return m; })();
@@ -2801,13 +2810,18 @@ function plannedItems(){ return rows.filter(function(r){ return r.included && r.
 // each open container takes, the running stock as they are cut in priority
 // order, and where the POs cover a shortfall.
 var fabricModel=null;
-function buildFabricModel(){
-  fabricModel=null;
+function buildFabricModel(){ fabricModel=fabricModelFor(null); return fabricModel; }
+// forcePO: a container to count whatever its Shipped state (the container PO
+// check runs it on the container just created); the planned cartons, which
+// always come last, are left out then as they cannot change its cover.
+function fabricModelFor(forcePO){
   if(!fabricReport) return null;
   var lines=fabricLines(), by={}, gaps={}, today=d2s(now());
   lines.order.forEach(function(k){ var L=lines.by[k]; by[k]={line:L, byPO:[], demand:0, planned:0}; });
-  var pos=fabricOpenPOs().map(function(po){ return {ref:po.ref, date:po.date, items:po.items, planned:false}; });
-  var pl=plannedItems(); if(pl.length) pos.push({ref:'(planned)', date:d2s(getNextDate()), items:pl, planned:true});
+  var open=fabricOpenPOs();
+  if(forcePO && open.indexOf(forcePO)<0) open=open.concat([forcePO]).sort(function(a,b){ return poPriority(a)-poPriority(b); });
+  var pos=open.map(function(po){ return {ref:po.ref, date:po.date, items:po.items, planned:false}; });
+  var pl=forcePO?[]:plannedItems(); if(pl.length) pos.push({ref:'(planned)', date:d2s(getNextDate()), items:pl, planned:true});
   var nGapUnits=0;
   pos.forEach(function(po){
     var take={};
@@ -2839,9 +2853,49 @@ function buildFabricModel(){
     e.thin=(e.free>=0 && e.status==='low');
   });
   var gapList=Object.keys(gaps).map(function(k){ return gaps[k]; }).sort(function(a,b){ return b.units-a.units; });
-  fabricModel={by:by, order:lines.order, gaps:gapList, gapUnits:nGapUnits, pos:pos, cutoff:cutoff, today:today};
-  return fabricModel;
+  return {by:by, order:lines.order, gaps:gapList, gapUnits:nGapUnits, pos:pos, cutoff:cutoff, today:today};
 }
+// ── The container PO check (Luke, 29 Oct 2026) ─────────────────────────────
+// On the day a container PO is created (saved to the tracker, or its Sage PO
+// file made), every cloth it cuts is checked: enough at Clockwork once the
+// containers ahead of it are cut, or short but their cloth PO lands within
+// FABRIC_ETA_WKS weeks of today, is OK; short with the cloth landing later,
+// or no cloth PO at all, is a flag to check with the supplier first. The
+// result is kept on the PO as fabricCheck {at, wks, n, flags:[{fab, name,
+// colour, m, short, eta}], unknown:[codes]} and shown on its card; it is
+// run again when the container's lines change or the card's badge is clicked.
+function fabricPOCheck(po){
+  if(!fabricReport || !po || !po.items) return null;
+  var M=fabricModelFor(po); if(!M) return null;
+  var flags=[], n=0;
+  M.order.forEach(function(k){
+    var e=M.by[k], p=null; for(var i=0;i<e.byPO.length;i++) if(e.byPO[i].ref===po.ref){ p=e.byPO[i]; break; }
+    if(!p) return; n++;
+    if(p.short>0 && !(p.coverDate && p.coverDate<=M.cutoff)) flags.push({fab:k, name:fabricLineName(k), colour:e.line.colour, m:Math.round(p.m), short:Math.round(p.short), eta:p.coverDate||null});
+  });
+  var unknown=[]; M.gaps.forEach(function(g){ if(g.pos.indexOf(po.ref)>=0) unknown.push(g.code); });
+  return {at:M.today, wks:FABRIC_ETA_WKS, n:n, flags:flags, unknown:unknown};
+}
+function stampFabricCheck(po){ var c=fabricPOCheck(po); if(c) po.fabricCheck=c; else delete po.fabricCheck; return c; }
+function fabricCheckText(po, c){
+  if(!c) return '';
+  var t='Fabric check for '+po.ref+' ('+fmtD(c.at)+', cloth landing within '+c.wks+' weeks is OK):\n';
+  if(!c.flags.length) t+='\n\u2713 All '+c.n+' cloth'+(c.n===1?'':'s')+' OK.';
+  else t+='\n\u26A0 CHECK WITH SUPPLIER \u2014 '+c.flags.length+' cloth'+(c.flags.length===1?'':'s')+' short:\n'+c.flags.map(function(f){ return '  \u2022 '+f.name+' ('+f.colour+'): needs '+fm(f.m)+' m, short '+fm(f.short)+' m, '+(f.eta?'Clockwork\'s cloth PO lands '+fmtD(f.eta)+' ('+wksUntil(f.eta).toFixed(1)+' wks)':'no cloth PO covers it'); }).join('\n')+'\n\nAsk Clockwork to confirm the cloth before committing the container.';
+  if(c.unknown.length) t+='\n\nNot checked (no cloth or metres known, map them on the Fabric usage tab): '+c.unknown.slice(0,8).join(', ')+(c.unknown.length>8?' and '+(c.unknown.length-8)+' more':'')+'.';
+  return t;
+}
+function fabricCheckHTML(po, i){
+  var c=po.fabricCheck;
+  if(!c){ return fabricReport&&IS_EDITOR ? '<div class="edit-only" style="font-size:10px;margin-top:3px"><a href="#" style="color:#5b21b6" title="Check every cloth this container cuts against Clockwork\'s stock and cloth POs, as of today" onclick="event.stopPropagation();recheckFabric('+i+');return false">&#129525; Run fabric check</a></div>' : ''; }
+  var tip=fabricCheckText(po, c)+(IS_EDITOR?'\n\nClick to check again as of today.':'');
+  var when=' <span style="color:#9ca3af;font-weight:400">'+fmtD(c.at).replace(/ \d{4}$/,'')+'</span>';
+  var click=IS_EDITOR?' onclick="event.stopPropagation();recheckFabric('+i+')" style="cursor:pointer"':'';
+  if(!c.flags.length) return '<div style="font-size:10px;margin-top:3px;color:#065f46;font-weight:600" title="'+esc(tip)+'"'+click+'>&#129525; Fabric OK'+(c.unknown.length?' <span style="color:#92400e">('+c.unknown.length+' unchecked)</span>':'')+when+'</div>';
+  return '<div style="font-size:10px;margin-top:3px;padding:3px 6px;border-radius:4px;background:#fef3c7;color:#92400e;font-weight:700" title="'+esc(tip)+'"'+click+'>&#9888; Check with supplier: '+c.flags.length+' cloth'+(c.flags.length===1?'':'s')+when
+    +'<div style="font-weight:400;margin-top:1px">'+c.flags.slice(0,3).map(function(f){ return esc(f.name)+' '+esc(f.colour)+': '+fm(f.short)+' m short, '+(f.eta?'PO '+fmtD(f.eta).replace(/ \d{4}$/,''):'no PO'); }).join('<br>')+(c.flags.length>3?'<br>+'+(c.flags.length-3)+' more':'')+'</div></div>';
+}
+function recheckFabric(i){ if(!IS_EDITOR) return; var po=cPOs[i]; if(!po) return; var c=stampFabricCheck(po); saveState(); renderPOCards(); if(c) alert(fabricCheckText(po, c)); else alert('Import Clockwork\'s fabric report on the Fabric usage tab first.'); }
 function fabricRefresh(){
   buildFabricModel();
   renderFabricInfo();
