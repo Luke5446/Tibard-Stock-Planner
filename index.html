@@ -1,4 +1,9 @@
 <!DOCTYPE html>
+<!-- Changelog
+  2026-10-29  On Request tile now counts only on-request codes with SOP demand, no free stock,
+              and nothing on a container or being made in house; its drill-down matches
+              (new status filter "On request - needs action"). Stored data unchanged.
+-->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -452,6 +457,7 @@ body.viewer-mode .view-only{display:block !important}
         <option value="overstock">Overstock (25+ wks)</option>
         <option value="obsolete">Obsolete only</option>
         <option value="request">On request only</option>
+        <option value="reqneed">On request &#8211; needs action</option>
       </select>
       <select id="ofilt" onchange="renderTable()">
         <option value="">All items</option>
@@ -2105,6 +2111,12 @@ function toggleRWI(id){
   if(c) c.style.transform=b.classList.contains('open')?'rotate(180deg)':'';
 }
 
+// On-request code that actually needs attention: customer demand on SOP, no free stock,
+// and nothing already coming on a container or being made in house.
+function reqNeedsAction(r){
+  return r.status==='request' && r.onSOP>0 && r.free<=0 && !(r.onContainer>0) && !(r.onWOP>0);
+}
+
 // ── Stats ──────────────────────────────────────────────────────────────────
 function updateStats(){
   // Total SKUs shown next to paste button
@@ -2119,7 +2131,7 @@ function updateStats(){
     {key:'cont',      label:'Needs container',         color:'#1e40af', n:rows.filter(function(r){return r.containerOrderQty>0;}).length},
     {key:'oncont',    label:'On Container',            color:'#6d28d9', n:rows.filter(function(r){return r.onContainer>0;}).length},
     {key:'onwop',     label:'Made in house',           color:'#0f766e', n:rows.filter(function(r){return r.onWOP>0;}).length},
-    {key:'request',   label:'On Request',              color:'#5b21b6', n:rows.filter(function(r){return r.status==='request';}).length},
+    {key:'reqneed',   label:'On Request',              color:'#5b21b6', n:rows.filter(reqNeedsAction).length},
     {key:'obsolete',  label:'Obsolete',                color:'#6b7280', n:rows.filter(function(r){return r.status==='obsolete';}).length},
   ];
   document.getElementById('statsBar').innerHTML=tiles.map(function(t){
@@ -2141,7 +2153,7 @@ function tileFilter(key){
   document.getElementById('ofilt').value='';
   document.getElementById('srch').value='';
   // status-type tiles map to the status filter; order-type tiles to the order filter
-  if(['critical','low','overstock','obsolete','request'].indexOf(key)>=0){
+  if(['critical','low','overstock','obsolete','request','reqneed'].indexOf(key)>=0){
     document.getElementById('sfilt').value=key;
   } else if(key==='air'){
     document.getElementById('ofilt').value='air';
@@ -2207,6 +2219,7 @@ function tickAll(state){ if(!IS_EDITOR) return;
       if(!words.every(function(w){return hay.indexOf(w)>=0;})) return;
     }
     if(sf==='active'&&(r.status==='obsolete'||r.status==='request')) return;
+    else if(sf==='reqneed'&&!reqNeedsAction(r)) return;
     else if(sf&&sf!=='active'&&r.status!==sf) return;
     if(of==='air'&&r.airFreightQty<=0) return;
     if(of==='cont'&&r.containerOrderQty<=0) return;
@@ -2317,6 +2330,7 @@ function resetCartons(){
   rows.forEach(function(r){
     if(srch&&r.code.toLowerCase().indexOf(srch)<0&&r.desc.toLowerCase().indexOf(srch)<0) return;
     if(sf==='active'&&(r.status==='obsolete'||r.status==='request')) return;
+    else if(sf==='reqneed'&&!reqNeedsAction(r)) return;
     else if(sf&&sf!=='active'&&r.status!==sf) return;
     if(of==='air'&&r.airFreightQty<=0) return;
     if(of==='cont'&&r.containerOrderQty<=0) return;
@@ -2357,6 +2371,7 @@ function renderTable(){
       if(!allMatch) return false;
     }
     if(sf==='active'&&(r.status==='obsolete'||r.status==='request')) return false;
+    else if(sf==='reqneed'&&!reqNeedsAction(r)) return false;
     else if(sf&&sf!=='active'&&r.status!==sf) return false;
     if(of==='air'&&r.airFreightQty<=0) return false;
     if(of==='cont'&&r.containerOrderQty<=0) return false;
