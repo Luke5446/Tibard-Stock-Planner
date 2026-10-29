@@ -1,5 +1,7 @@
 <!DOCTYPE html>
 <!-- Changelog
+  2026-10-29  Obsolete tile now uses the same rule as On Request (SOP demand, no free stock,
+              nothing on a container or in house); new status filter "Obsolete - needs action".
   2026-10-29  On Request tile now counts only on-request codes with SOP demand, no free stock,
               and nothing on a container or being made in house; its drill-down matches
               (new status filter "On request - needs action"). Stored data unchanged.
@@ -456,6 +458,7 @@ body.viewer-mode .view-only{display:block !important}
         <option value="healthy">Healthy (12&#8211;25 wks)</option>
         <option value="overstock">Overstock (25+ wks)</option>
         <option value="obsolete">Obsolete only</option>
+        <option value="obsneed">Obsolete &#8211; needs action</option>
         <option value="request">On request only</option>
         <option value="reqneed">On request &#8211; needs action</option>
       </select>
@@ -2111,11 +2114,13 @@ function toggleRWI(id){
   if(c) c.style.transform=b.classList.contains('open')?'rotate(180deg)':'';
 }
 
-// On-request code that actually needs attention: customer demand on SOP, no free stock,
-// and nothing already coming on a container or being made in house.
-function reqNeedsAction(r){
-  return r.status==='request' && r.onSOP>0 && r.free<=0 && !(r.onContainer>0) && !(r.onWOP>0);
+// On-request / obsolete code that actually needs attention: customer demand on SOP, no free
+// stock, and nothing already coming on a container or being made in house.
+function needsAction(r,status){
+  return r.status===status && r.onSOP>0 && r.free<=0 && !(r.onContainer>0) && !(r.onWOP>0);
 }
+function reqNeedsAction(r){ return needsAction(r,'request'); }
+function obsNeedsAction(r){ return needsAction(r,'obsolete'); }
 
 // ── Stats ──────────────────────────────────────────────────────────────────
 function updateStats(){
@@ -2132,7 +2137,7 @@ function updateStats(){
     {key:'oncont',    label:'On Container',            color:'#6d28d9', n:rows.filter(function(r){return r.onContainer>0;}).length},
     {key:'onwop',     label:'Made in house',           color:'#0f766e', n:rows.filter(function(r){return r.onWOP>0;}).length},
     {key:'reqneed',   label:'On Request',              color:'#5b21b6', n:rows.filter(reqNeedsAction).length},
-    {key:'obsolete',  label:'Obsolete',                color:'#6b7280', n:rows.filter(function(r){return r.status==='obsolete';}).length},
+    {key:'obsneed',   label:'Obsolete',                color:'#6b7280', n:rows.filter(obsNeedsAction).length},
   ];
   document.getElementById('statsBar').innerHTML=tiles.map(function(t){
     var active=(activeTile===t.key)?' tile-active':'';
@@ -2153,7 +2158,7 @@ function tileFilter(key){
   document.getElementById('ofilt').value='';
   document.getElementById('srch').value='';
   // status-type tiles map to the status filter; order-type tiles to the order filter
-  if(['critical','low','overstock','obsolete','request','reqneed'].indexOf(key)>=0){
+  if(['critical','low','overstock','obsolete','request','reqneed','obsneed'].indexOf(key)>=0){
     document.getElementById('sfilt').value=key;
   } else if(key==='air'){
     document.getElementById('ofilt').value='air';
@@ -2220,6 +2225,7 @@ function tickAll(state){ if(!IS_EDITOR) return;
     }
     if(sf==='active'&&(r.status==='obsolete'||r.status==='request')) return;
     else if(sf==='reqneed'&&!reqNeedsAction(r)) return;
+    else if(sf==='obsneed'&&!obsNeedsAction(r)) return;
     else if(sf&&sf!=='active'&&r.status!==sf) return;
     if(of==='air'&&r.airFreightQty<=0) return;
     if(of==='cont'&&r.containerOrderQty<=0) return;
@@ -2331,6 +2337,7 @@ function resetCartons(){
     if(srch&&r.code.toLowerCase().indexOf(srch)<0&&r.desc.toLowerCase().indexOf(srch)<0) return;
     if(sf==='active'&&(r.status==='obsolete'||r.status==='request')) return;
     else if(sf==='reqneed'&&!reqNeedsAction(r)) return;
+    else if(sf==='obsneed'&&!obsNeedsAction(r)) return;
     else if(sf&&sf!=='active'&&r.status!==sf) return;
     if(of==='air'&&r.airFreightQty<=0) return;
     if(of==='cont'&&r.containerOrderQty<=0) return;
@@ -2372,6 +2379,7 @@ function renderTable(){
     }
     if(sf==='active'&&(r.status==='obsolete'||r.status==='request')) return false;
     else if(sf==='reqneed'&&!reqNeedsAction(r)) return false;
+    else if(sf==='obsneed'&&!obsNeedsAction(r)) return false;
     else if(sf&&sf!=='active'&&r.status!==sf) return false;
     if(of==='air'&&r.airFreightQty<=0) return false;
     if(of==='cont'&&r.containerOrderQty<=0) return false;
