@@ -1,5 +1,8 @@
 <!DOCTYPE html>
 <!-- Changelog
+  2026-10-30  Air qty shows the cartons it makes underneath (e.g. "4 ctn x 80"). The Air qty and
+              Air wks columns now appear only when filtered on Needs air freight (tile or
+              dropdown); quantities are kept and exported as before. Stored data unchanged.
   2026-10-30  Air qty suggestion now only covers shortfalls from the air freight landing date
               onward. A dip before then is backfilled by containers already due, and air
               ordered today cannot land sooner, so codes covered by AF129/C128-type arrivals
@@ -152,6 +155,8 @@ table.main{width:100%;border-collapse:collapse;font-size:12px;min-width:1170px}
 table.main th{background:#f0f3f8;color:#4b5563;font-weight:600;font-size:10px;padding:7px 8px;text-align:left;border-bottom:1px solid #dde3ed;white-space:nowrap;cursor:pointer;user-select:none;text-transform:uppercase;letter-spacing:.3px}
 table.main th:hover{color:#111827;background:#e6eaf2}
 table.main th.ns{cursor:default}
+table.main.hide-air .col-air{display:none}
+.air-ctn{font-size:9px;color:#9a3412;text-align:center;margin-top:2px;line-height:1.1}
 table.main th.ns:hover{color:#4b5563;background:#f0f3f8}
 table.main td{padding:6px 8px;border-bottom:1px solid #f0f3f8;vertical-align:middle;color:#111827}
 table.main tr:last-child td{border-bottom:none}
@@ -505,8 +510,8 @@ body.viewer-mode .view-only{display:block !important}
           <th onclick="sBy('onContainer')" style="width:52px;text-align:right">On cont &#8597;</th>
           <th onclick="sBy('onWOP')" style="width:56px;text-align:right;color:#0f766e" title="Units on live works orders in the production planner">In house &#8597;</th>
           <th class="ns" style="width:80px">Status</th>
-          <th onclick="sBy('actAir')" style="width:120px;text-align:center;color:#c2410c">&#9992; Air qty &#8597;</th>
-          <th onclick="sBy('airCover')" style="width:92px;text-align:right;color:#c2410c" title="Weeks of cover when the air freight lands (date in the bar above): stock left that day plus the Air qty, divided by weekly usage. Compared with when the SKU's next container or works order lands: air freight is a top-up to reach that, not a 12-week target.">&#9992; Air wks &#8597;</th>
+          <th class="col-air" onclick="sBy('actAir')" style="width:120px;text-align:center;color:#c2410c" title="Units by air, stepped by carton. Cartons shown underneath. Shown only when filtered on Needs air freight.">&#9992; Air qty &#8597;</th>
+          <th class="col-air" onclick="sBy('airCover')" style="width:92px;text-align:right;color:#c2410c" title="Weeks of cover when the air freight lands (date in the bar above): stock left that day plus the Air qty, divided by weekly usage. Compared with when the SKU's next container or works order lands: air freight is a top-up to reach that, not a 12-week target.">&#9992; Air wks &#8597;</th>
           <th onclick="sBy('containerOrderQty')" style="width:70px;text-align:right;color:#1e40af">&#128682; Cont qty &#8597;</th>
           <th onclick="sBy('actCartons')" style="width:72px;text-align:right;color:#1e40af">&#128682; Act units &#8597;</th>
           <th onclick="sBy('wkCover')" style="width:78px;text-align:right;color:#065f46">Wks cover &#8597;</th>
@@ -913,6 +918,11 @@ function airCoverOnArrival(r, airUnits){
     else if(nextIn===null || w-wksToAir<nextIn){ nextIn=w-wksToAir; nextRef=po.ref||''; }
   });
   return {wks:Math.max(0,(s+airUnits)/r.weeklyUsage), nextIn:nextIn, nextRef:nextRef, stockAt:s, wksToAir:wksToAir};
+}
+// Cartons the Air qty makes, e.g. "4 ctn x 80" (quarter cartons shown as 4.25)
+function airCtnText(r){
+  if(!(r.actAir>0)) return '';
+  return fC(Math.round(r.actAir/r.carton*4)/4)+' ctn &times; '+r.carton;
 }
 function airWksHTML(r){
   if(r.weeklyUsage<=0) return '<span style="color:#6b7280;font-size:11px">No sales</span>';
@@ -2317,6 +2327,8 @@ function adjAir(uid,deltaCartons){ if(!IS_EDITOR) return;
   if(el) el.value=r.actAir.toLocaleString();
   var aw=document.getElementById('aw-'+r._uid);
   if(aw) aw.innerHTML=airWksHTML(r);
+  var ac=document.getElementById('ac-'+r._uid);
+  if(ac) ac.innerHTML=airCtnText(r);
   updateStats(); dbSave();
 }
 function setAir(uid,val){ if(!IS_EDITOR) return;
@@ -2330,6 +2342,8 @@ function setAir(uid,val){ if(!IS_EDITOR) return;
   if(el) el.value=r.actAir.toLocaleString();
   var aw=document.getElementById('aw-'+r._uid);
   if(aw) aw.innerHTML=airWksHTML(r);
+  var ac=document.getElementById('ac-'+r._uid);
+  if(ac) ac.innerHTML=airCtnText(r);
   updateStats(); dbSave();
 }
 function adjAct(uid,delta){ if(!IS_EDITOR) return;
@@ -2471,6 +2485,8 @@ function renderTable(){
     return sortAsc?av-bv:bv-av;
   });
   document.getElementById('rc').textContent=data.length.toLocaleString()+' items shown';
+  // Air qty and Air wks columns only show on the Needs air freight filter (tile or dropdown)
+  document.getElementById('mainTbl').classList.toggle('hide-air', of!=='air');
   // Header checkbox mirrors the rows in view: all ticked, some (indeterminate) or none
   var hc=document.getElementById('tickAllCb');
   if(hc){ var inc=0; data.forEach(function(r){ if(r.included) inc++; }); hc.checked=data.length>0&&inc===data.length; hc.indeterminate=inc>0&&inc<data.length; hc.disabled=!data.length; }
@@ -2501,7 +2517,8 @@ function rowHTML(r){
     +' onchange="event.stopPropagation();setAir(\''+r._uid+'\',this.value)"'
     +' onkeydown="if(event.key===\'Enter\')this.blur()">'
     +'<button class="inc-btn" title="+1 carton" onclick="event.stopPropagation();adjAir(\''+r._uid+'\',1)">&#43;</button>'
-    +'</div>';
+    +'</div>'
+    +'<div class="air-ctn" id="ac-'+id+'">'+airCtnText(r)+'</div>';
   var contH = r.containerOrderQty>0 ? '<span class="cont-qty">'+r.containerOrderQty.toLocaleString()+'</span>' : dash();
   // Rec cartons (calculated, display only)
   var recH = fC(r.adjCartons);
@@ -2535,8 +2552,8 @@ function rowHTML(r){
     +'<td style="text-align:right">'+contC+'</td>'
     +'<td style="text-align:right">'+whC+'</td>'
     +'<td><span class="badge '+(statusCls[r.status]||'')+'">'+statusLbl[r.status]+'</span></td>'
-    +'<td>'+airH+'</td>'
-    +'<td style="text-align:right" id="aw-'+id+'">'+airWksHTML(r)+'</td>'
+    +'<td class="col-air">'+airH+'</td>'
+    +'<td class="col-air" style="text-align:right" id="aw-'+id+'">'+airWksHTML(r)+'</td>'
     +'<td style="text-align:right">'+contH+'</td>'
     +'<td style="text-align:right" id="au-'+id+'">'+actUnitsH+'</td>'
     +'<td style="text-align:right" id="wc-'+id+'">'+wkCoverH+'</td>'
