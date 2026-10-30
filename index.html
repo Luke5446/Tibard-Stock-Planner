@@ -1,5 +1,9 @@
 <!DOCTYPE html>
 <!-- Changelog
+  2026-10-30  Air qty suggestion now only covers shortfalls from the air freight landing date
+              onward. A dip before then is backfilled by containers already due, and air
+              ordered today cannot land sooner, so codes covered by AF129/C128-type arrivals
+              drop to 0. Changing the landing date re-runs the suggestion. Stored data unchanged.
   2026-10-30  Air freight: new "Air wks" column shows the weeks cover each SKU will have when the
               air freight lands (date set in the bar, default 3 wks), counting the Air qty entered
               plus anything else landing before it, set against when the SKU's next container
@@ -514,7 +518,7 @@ body.viewer-mode .view-only{display:block !important}
       </table>
     </div></div>
     <p class="foot">
-      &#9992; <strong style="color:#c2410c">Air qty</strong> = units to prevent stock running out, with 3 weeks cover (3 wk air lead time). Air freight is a top-up until the next container lands, not a 12-week cover.
+      &#9992; <strong style="color:#c2410c">Air qty</strong> = units to stop stock running out from the air freight landing date onward, plus 3 weeks cover. Shortfalls before it lands are backfilled by containers already due, so they are not counted. Air freight is a top-up until the next container lands, not a 12-week cover.
       <strong style="color:#c2410c">Air wks</strong> = weeks cover when the air freight lands (date in the bar), = (stock left that day + Air qty) &divide; weekly usage, with the SKU's next container or works order shown beside it; &#10003; means the top-up lasts until it lands, &#9888; means stock runs out first.
       &#128682; <strong style="color:#1e40af">Cont qty</strong> = units so the next container (13 wk lead) gives 12 wks cover on arrival, counting stock already on order on other containers.
       <strong>Rec crt</strong> = recommended cartons (calculated). <strong>Actual cartons</strong> = your adjusted figure used in export.
@@ -743,7 +747,7 @@ function updateHint(){ var d=getNextDate(); var w=wksUntil(d2s(d)); document.get
 function initSbar(){ var sb=document.getElementById('sbar'); sb.style.display='flex'; document.getElementById('nextDate').value=d2s(getNextDate()); updateHint(); document.getElementById('airDateBar').value=d2s(getAirDate()); updateAirHint(); }
 function getAirDate(){ return airEtaDate ? new Date(airEtaDate) : nwkday(now(),AIR_LEAD); }
 function updateAirHint(){ var d=getAirDate(); var el=document.getElementById('airDateHint'); if(el) el.textContent=fmtD(d2s(d))+' ('+wksUntil(d2s(d)).toFixed(1)+' wks away)'; }
-function onAirDateChange(v){ airEtaDate=v||null; var b=document.getElementById('airDateBar'); if(b) b.value=d2s(getAirDate()); updateAirHint(); renderTable(); saveState(); }
+function onAirDateChange(v){ airEtaDate=v||null; var b=document.getElementById('airDateBar'); if(b) b.value=d2s(getAirDate()); updateAirHint(); recalcQtys(); renderTable(); updateStats(); saveState(); }
 function resetAirDate(){ onAirDateChange(null); }
 
 // ── UI ─────────────────────────────────────────────────────────────────────
@@ -941,17 +945,22 @@ function calcQtys(r){
   rPOs.sort(function(a,b){ return a.wks-b.wks; });
 
   // ── Air freight: simulate week by week to find minimum stock ──────────────
-  // This catches gaps where containers are on order but arrive too late
+  // This catches gaps where containers are on order but arrive too late.
+  // Only the weeks from the air freight's landing date onward count: a dip
+  // before then (stock negative today, say) is backfilled by whatever lands
+  // first, and an air freight ordered now cannot get here any sooner, so it
+  // is not asked to cover it. Stock still accumulates through those weeks.
   var horizon = Math.max(TARGET, Math.ceil(wksToCont)+1);
+  var airW = Math.round(wksUntil(d2s(getAirDate())));
   var stock = r.free;
   // Anything landing this week (incl. a works order already past its due
   // date, which wksUntil clamps to 0) is in hand before the walk starts.
   rPOs.forEach(function(p){ if(Math.round(p.wks)===0) stock+=p.qty; });
-  var minStock = stock;
-  for(var w=1; w<=horizon; w++){
+  var minStock = airW<=0 ? stock : Infinity;
+  for(var w=1; w<=Math.max(horizon,airW); w++){
     rPOs.forEach(function(p){ if(Math.round(p.wks)===w) stock+=p.qty; });
     stock -= r.weeklyUsage;
-    if(stock < minStock) minStock = stock;
+    if(w>=airW && stock < minStock) minStock = stock;
   }
   // Air qty = enough to lift the minimum stock to 0, plus a 3-week cover buffer
   var airQty = minStock < 0
