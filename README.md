@@ -93,6 +93,13 @@ prices back. **Clear** (all saved data) leaves the price list alone.
 
 ### What the prices do
 
+- **Air wks** column: weeks cover on the day the air freight lands (date in the
+  bar, default 3 weeks) = stock left that day + Air qty, divided by weekly usage,
+  with the SKU's next container or works order beside it. Air freight is a top-up
+  to bridge to that arrival, not a 12-week target. The Export air freight modal
+  summarises the same for the ticked rows.
+- The header checkbox in the tick column ticks or unticks only the rows in the
+  current filter (e.g. the Needs air freight tile).
 - **Export container** and **Export air freight** add `Price` and `Total
   Price` columns to the CSV, with the total value on the TOTALS row. A line
   whose code is not in the list is left blank, and the export summary says
