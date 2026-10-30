@@ -1,5 +1,12 @@
 <!DOCTYPE html>
 <!-- Changelog
+  2026-10-30  Air freight: new "Air wks" column shows the weeks cover each SKU will have when the
+              air freight lands (date set in the bar, default 3 wks), counting the Air qty entered
+              plus anything else landing before it, set against when the SKU's next container
+              or works order lands so you can see whether the top-up bridges the gap. Air freight export shows the same summary.
+              "Tick all"/"Untick all" buttons replaced by a header checkbox that ticks only the
+              rows in the current filter (e.g. the Needs air freight tile). Stored data unchanged;
+              one new optional field (airEtaDate).
   2026-10-29  Obsolete tile now uses the same rule as On Request (SOP demand, no free stock,
               nothing on a container or in house); new status filter "Obsolete - needs action".
   2026-10-29  On Request tile now counts only on-request codes with SOP demand, no free stock,
@@ -295,7 +302,7 @@ body.viewer-mode .view-only{display:block !important}
 <div class="toolbar">
   <button class="btn btn-p edit-only" id="pasteBtn" onclick="togglePaste()">&#9998; Paste stock data from Sage</button>
   <span id="skuCount" style="font-size:13px;font-weight:700;color:#1F3864;padding:0 4px"></span>
-  <div style="margin-left:auto;font-size:11px;color:#4b5563">Target cover: <strong>12 wks</strong> &nbsp;|&nbsp; Air lead: <strong>2 wks</strong> &nbsp;|&nbsp; Container lead: <strong>13 wks</strong> &nbsp;|&nbsp; <span id="prodPlanInfo"></span> &nbsp;|&nbsp; <span id="fabricInfo"></span></div>
+  <div style="margin-left:auto;font-size:11px;color:#4b5563">Target cover: <strong>12 wks</strong> &nbsp;|&nbsp; Air lead: <strong>3 wks</strong> &nbsp;|&nbsp; Container lead: <strong>13 wks</strong> &nbsp;|&nbsp; <span id="prodPlanInfo"></span> &nbsp;|&nbsp; <span id="fabricInfo"></span></div>
 </div>
 
 <div class="sbar" id="sbar">
@@ -304,6 +311,11 @@ body.viewer-mode .view-only{display:block !important}
   <span class="hint" id="dateHint"></span>
   <span class="hint" style="opacity:.8">&#8212; based on a 13-week lead time from placing the order. Adjust if you have a confirmed date.</span>
   <button class="btn" style="font-size:11px;padding:3px 9px" onclick="resetDate()">&#8635; Reset to 13 wks</button>
+  <span style="border-left:1px solid #bdd5f0;height:18px"></span>
+  <label>&#9992; Air freight lands:</label>
+  <input type="date" id="airDateBar" onchange="onAirDateChange(this.value)">
+  <span class="hint" id="airDateHint"></span>
+  <button class="btn" style="font-size:11px;padding:3px 9px" onclick="resetAirDate()">&#8635; Reset to 3 wks</button>
 </div>
 
 <div class="main">
@@ -473,15 +485,13 @@ body.viewer-mode .view-only{display:block !important}
       <button class="btn" onclick="clearFilt()" style="font-size:11px;padding:4px 9px">&#10005; Clear filters</button>
       <button class="btn edit-only" onclick="resetView()" style="font-size:11px;padding:4px 9px">&#8635; Reset view</button>
       <button class="btn edit-only" onclick="resetCartons()" style="font-size:11px;padding:4px 9px">&#8635; Reset cartons to rec</button>
-      <button class="btn edit-only" onclick="tickAll(false)" style="font-size:11px;padding:4px 9px">&#9744; Untick all</button>
-      <button class="btn edit-only" onclick="tickAll(true)" style="font-size:11px;padding:4px 9px">&#9745; Tick all</button>
       <span class="rc" id="rc"></span>
     </div>
 
     <div class="twrap"><div class="tscroll">
       <table class="main" id="mainTbl">
         <thead><tr>
-          <th class="ns" style="width:28px;text-align:center">&#10003;</th>
+          <th class="ns" style="width:28px;text-align:center" title="Tick or untick every row in the current filter"><input type="checkbox" class="inc-cb edit-only" id="tickAllCb" onchange="tickAll(this.checked)" style="vertical-align:middle"></th>
           <th onclick="sBy('code')" style="width:100px">Code &#8597;</th>
           <th onclick="sBy('desc')" style="width:185px">Description &#8597;</th>
           <th onclick="sBy('free')" style="width:60px;text-align:right">Free stk &#8597;</th>
@@ -492,6 +502,7 @@ body.viewer-mode .view-only{display:block !important}
           <th onclick="sBy('onWOP')" style="width:56px;text-align:right;color:#0f766e" title="Units on live works orders in the production planner">In house &#8597;</th>
           <th class="ns" style="width:80px">Status</th>
           <th onclick="sBy('actAir')" style="width:120px;text-align:center;color:#c2410c">&#9992; Air qty &#8597;</th>
+          <th onclick="sBy('airCover')" style="width:92px;text-align:right;color:#c2410c" title="Weeks of cover when the air freight lands (date in the bar above): stock left that day plus the Air qty, divided by weekly usage. Compared with when the SKU's next container or works order lands: air freight is a top-up to reach that, not a 12-week target.">&#9992; Air wks &#8597;</th>
           <th onclick="sBy('containerOrderQty')" style="width:70px;text-align:right;color:#1e40af">&#128682; Cont qty &#8597;</th>
           <th onclick="sBy('actCartons')" style="width:72px;text-align:right;color:#1e40af">&#128682; Act units &#8597;</th>
           <th onclick="sBy('wkCover')" style="width:78px;text-align:right;color:#065f46">Wks cover &#8597;</th>
@@ -503,7 +514,8 @@ body.viewer-mode .view-only{display:block !important}
       </table>
     </div></div>
     <p class="foot">
-      &#9992; <strong style="color:#c2410c">Air qty</strong> = units to prevent stock running out, with 3 weeks cover (3 wk air lead time).
+      &#9992; <strong style="color:#c2410c">Air qty</strong> = units to prevent stock running out, with 3 weeks cover (3 wk air lead time). Air freight is a top-up until the next container lands, not a 12-week cover.
+      <strong style="color:#c2410c">Air wks</strong> = weeks cover when the air freight lands (date in the bar), = (stock left that day + Air qty) &divide; weekly usage, with the SKU's next container or works order shown beside it; &#10003; means the top-up lasts until it lands, &#9888; means stock runs out first.
       &#128682; <strong style="color:#1e40af">Cont qty</strong> = units so the next container (13 wk lead) gives 12 wks cover on arrival, counting stock already on order on other containers.
       <strong>Rec crt</strong> = recommended cartons (calculated). <strong>Actual cartons</strong> = your adjusted figure used in export.
       <strong style="color:#0f766e">In house</strong> = units on live works orders in the production planner; they count as arriving on the works order's due date, so they are not ordered again.
@@ -663,9 +675,9 @@ body.viewer-mode .view-only{display:block !important}
       <p style="font-size:12px;color:#4b5563;margin-bottom:10px">Exports all ticked rows with an Air freight qty &gt; 0.</p>
       <div class="egrid">
         <div><label>Air order reference</label><input type="text" id="airRef" placeholder="e.g. AIR-001"></div>
-        <div><label>Required by date</label><input type="date" id="airDate"></div>
+        <div><label>Required by date (lands)</label><input type="date" id="airDate" onchange="onAirDateChange(this.value);airSummary()"></div>
       </div>
-      <div style="background:#fff7ed;border:1px solid #f5c08a;border-radius:6px;padding:9px;margin-bottom:10px;font-size:12px;color:#c2410c"><strong id="airSum"></strong></div>
+      <div style="background:#fff7ed;border:1px solid #f5c08a;border-radius:6px;padding:9px;margin-bottom:10px;font-size:12px;color:#c2410c"><strong id="airSum"></strong><div id="airCoverSum" style="font-weight:400;color:#7c2d12;margin-top:5px;line-height:1.4"></div></div>
       <div style="display:flex;gap:6px;justify-content:flex-end">
         <button class="btn" onclick="closeAir()">Cancel</button>
         <button class="btn btn-p" onclick="doAirExport()">&#8659; Download CSV</button>
@@ -696,6 +708,7 @@ function sortProj(col){
 }
 var TARGET = 12, CONT_LEAD = 13, AIR_LEAD = 3, RWWKS = 20;
 var selCtName = null, selCtCap = 0, nextContDate = null;
+var airEtaDate = null;   // when the air freight being planned lands; null = today + AIR_LEAD weeks
 var selectedPO = null; // which container tile is selected to show its projection
 var IS_EDITOR = /[?&]edit\b/.test(window.location.search);
 
@@ -727,7 +740,11 @@ function getNextDate(){ return nextContDate ? new Date(nextContDate) : nwkday(no
 function resetDate(){ nextContDate=null; document.getElementById('nextDate').value=d2s(getNextDate()); updateHint(); recalcQtys(); renderTable(); saveState(); }
 function onDateChange(){ nextContDate=document.getElementById('nextDate').value||null; updateHint(); recalcQtys(); renderTable(); saveState(); }
 function updateHint(){ var d=getNextDate(); var w=wksUntil(d2s(d)); document.getElementById('dateHint').textContent=fmtD(d2s(d))+' ('+w.toFixed(1)+' wks away)'; }
-function initSbar(){ var sb=document.getElementById('sbar'); sb.style.display='flex'; document.getElementById('nextDate').value=d2s(getNextDate()); updateHint(); }
+function initSbar(){ var sb=document.getElementById('sbar'); sb.style.display='flex'; document.getElementById('nextDate').value=d2s(getNextDate()); updateHint(); document.getElementById('airDateBar').value=d2s(getAirDate()); updateAirHint(); }
+function getAirDate(){ return airEtaDate ? new Date(airEtaDate) : nwkday(now(),AIR_LEAD); }
+function updateAirHint(){ var d=getAirDate(); var el=document.getElementById('airDateHint'); if(el) el.textContent=fmtD(d2s(d))+' ('+wksUntil(d2s(d)).toFixed(1)+' wks away)'; }
+function onAirDateChange(v){ airEtaDate=v||null; var b=document.getElementById('airDateBar'); if(b) b.value=d2s(getAirDate()); updateAirHint(); renderTable(); saveState(); }
+function resetAirDate(){ onAirDateChange(null); }
 
 // ── UI ─────────────────────────────────────────────────────────────────────
 function togglePaste(){
@@ -872,6 +889,41 @@ function wksCoverOnETA(r, actUnits){
     t = later[i].wks;
   }
   return t + Math.max(0, s / r.weeklyUsage);
+}
+
+// Weeks of cover on the day the air freight lands: stock left that day (free
+// stock less usage until then, plus anything already landing before it) plus
+// the air units, divided by weekly usage. Later containers and works orders
+// are NOT added in - the figure is how long the air freight alone lasts, set
+// against when the SKU's next arrival lands (nextIn), because an air freight
+// only has to bridge to that.
+function airCoverOnArrival(r, airUnits){
+  if(r.weeklyUsage<=0) return {wks:999, nextIn:null, nextRef:'', stockAt:r.free, wksToAir:0};
+  var wksToAir = wksUntil(d2s(getAirDate()));
+  var s = r.free - r.weeklyUsage*wksToAir, nextIn=null, nextRef='';
+  allPOs().forEach(function(po){
+    var q=0; po.items.forEach(function(i){ if(i.code===r.code) q+=i.qty; });
+    if(q<=0) return;
+    var w=wksUntil(po.date);
+    if(w<=wksToAir) s+=q;
+    else if(nextIn===null || w-wksToAir<nextIn){ nextIn=w-wksToAir; nextRef=po.ref||''; }
+  });
+  return {wks:Math.max(0,(s+airUnits)/r.weeklyUsage), nextIn:nextIn, nextRef:nextRef, stockAt:s, wksToAir:wksToAir};
+}
+function airWksHTML(r){
+  if(r.weeklyUsage<=0) return '<span style="color:#6b7280;font-size:11px">No sales</span>';
+  if(!(r.actAir>0)) return dash();
+  var a=airCoverOnArrival(r, r.actAir);
+  var bridges = a.nextIn!=null ? a.wks>=a.nextIn-0.05 : null;
+  var col = bridges===true?'#065f46': bridges===false?'#b91c1c': a.wks<AIR_LEAD?'#b91c1c': a.wks<6?'#92400e':'#065f46';
+  var sub = a.nextIn!=null
+    ? (bridges?'&#10003; bridges to ':'&#9888; short of ')+esc(a.nextRef)+' <span style="white-space:nowrap">('+a.nextIn.toFixed(1)+' wk)</span>'
+    : 'nothing else due';
+  var tip='Lands '+fmtD(d2s(getAirDate()))+': stock then '+Math.round(a.stockAt).toLocaleString()+' + air '+r.actAir.toLocaleString()
+    +' = '+Math.round(a.stockAt+r.actAir).toLocaleString()+' units at '+r.weeklyUsage.toFixed(1)+'/wk'
+    +(a.nextIn!=null?'. Next arrival '+a.nextRef+' lands '+a.nextIn.toFixed(1)+' wks after the air freight.':'. No later container or works order for this code.');
+  return '<span title="'+esc(tip)+'"><span style="font-weight:700;color:'+col+'">'+(a.wks>=99?'99+':a.wks.toFixed(1))+'</span>'
+    +'<div style="font-size:9px;color:'+col+';line-height:1.15;white-space:normal">'+sub+'</div></span>';
 }
 
 function calcQtys(r){
@@ -2254,6 +2306,8 @@ function adjAir(uid,deltaCartons){ if(!IS_EDITOR) return;
   r.airManAdj=true;
   var el=document.getElementById('ai-'+r._uid);
   if(el) el.value=r.actAir.toLocaleString();
+  var aw=document.getElementById('aw-'+r._uid);
+  if(aw) aw.innerHTML=airWksHTML(r);
   updateStats(); dbSave();
 }
 function setAir(uid,val){ if(!IS_EDITOR) return;
@@ -2265,6 +2319,8 @@ function setAir(uid,val){ if(!IS_EDITOR) return;
   r.airManAdj=true;
   var el=document.getElementById('ai-'+r._uid);
   if(el) el.value=r.actAir.toLocaleString();
+  var aw=document.getElementById('aw-'+r._uid);
+  if(aw) aw.innerHTML=airWksHTML(r);
   updateStats(); dbSave();
 }
 function adjAct(uid,delta){ if(!IS_EDITOR) return;
@@ -2373,8 +2429,9 @@ function renderTable(){
     if(r.weeklyUsage>0){
       var au=r.actCartons*r.carton;
       r.wkCover=(au>0)?wksCoverOnETA(r,au):-1;
+      r.airCover=(r.actAir>0)?airCoverOnArrival(r,r.actAir).wks:-1;
     } else {
-      r.wkCover=-1;
+      r.wkCover=-1; r.airCover=-1;
     }
   });
   // Multi-word search: every word must appear in the code or description (AND match).
@@ -2405,8 +2462,11 @@ function renderTable(){
     return sortAsc?av-bv:bv-av;
   });
   document.getElementById('rc').textContent=data.length.toLocaleString()+' items shown';
+  // Header checkbox mirrors the rows in view: all ticked, some (indeterminate) or none
+  var hc=document.getElementById('tickAllCb');
+  if(hc){ var inc=0; data.forEach(function(r){ if(r.included) inc++; }); hc.checked=data.length>0&&inc===data.length; hc.indeterminate=inc>0&&inc<data.length; hc.disabled=!data.length; }
   var tb=document.getElementById('tBody');
-  if(!data.length){ tb.innerHTML='<tr><td colspan="17" style="text-align:center;padding:1.5rem;color:#6b7280">No items match</td></tr>'; return; }
+  if(!data.length){ tb.innerHTML='<tr><td colspan="18" style="text-align:center;padding:1.5rem;color:#6b7280">No items match</td></tr>'; return; }
   tb.innerHTML=data.map(rowHTML).join('');
 }
 
@@ -2467,6 +2527,7 @@ function rowHTML(r){
     +'<td style="text-align:right">'+whC+'</td>'
     +'<td><span class="badge '+(statusCls[r.status]||'')+'">'+statusLbl[r.status]+'</span></td>'
     +'<td>'+airH+'</td>'
+    +'<td style="text-align:right" id="aw-'+id+'">'+airWksHTML(r)+'</td>'
     +'<td style="text-align:right">'+contH+'</td>'
     +'<td style="text-align:right" id="au-'+id+'">'+actUnitsH+'</td>'
     +'<td style="text-align:right" id="wc-'+id+'">'+wkCoverH+'</td>'
@@ -2523,12 +2584,28 @@ function showAirExport(){
   if(!rows.length){ alert('Load stock data first.'); return; }
   var er=rows.filter(function(r){return r.included&&r.actAir>0;});
   if(!er.length){ alert('No ticked rows with Air freight qty > 0.'); return; }
+  document.getElementById('airRef').value='';
+  document.getElementById('airDate').value=d2s(getAirDate());
+  airSummary();
+  document.getElementById('airModal').classList.add('open');
+}
+// Cover on landing for the SKUs being exported: how many bridge to their next
+// container, which land short, and the tightest cover. Air is a top-up, so
+// bridging to the next arrival is the test, not 12 weeks.
+function airSummary(){
+  var er=rows.filter(function(r){return r.included&&r.actAir>0;});
   var tu=Math.round(er.reduce(function(s,r){return s+r.actAir;},0));
   document.getElementById('airSum').innerHTML=er.length+' SKUs &nbsp;|&nbsp; '+tu.toLocaleString()+' units by air';
-  document.getElementById('airRef').value='';
-  var byDate=nwkday(now(),2);
-  document.getElementById('airDate').value=d2s(byDate);
-  document.getElementById('airModal').classList.add('open');
+  var bridge=0, short=[], none=0, minW=999, minCode='';
+  er.forEach(function(r){
+    var a=airCoverOnArrival(r,r.actAir);
+    if(a.nextIn==null) none++; else if(a.wks>=a.nextIn-0.05) bridge++; else short.push(r.code+' ('+a.wks.toFixed(1)+' of '+a.nextIn.toFixed(1)+' wk)');
+    if(a.wks<minW){ minW=a.wks; minCode=r.code; }
+  });
+  var h='Lands '+fmtD(d2s(getAirDate()))+': '+bridge+' bridge to their next container'+(none?', '+none+' with nothing else due':'')+'.';
+  if(short.length) h+='<br><span style="color:#b91c1c">&#9888; '+short.length+' land short of the next container: '+esc(short.slice(0,6).join(', '))+(short.length>6?' &hellip;':'')+'</span>';
+  if(er.length) h+='<br>Tightest cover on landing: '+esc(minCode)+' at '+(minW>=99?'99+':minW.toFixed(1))+' wks.';
+  document.getElementById('airCoverSum').innerHTML=h;
 }
 function doAirExport(){
   var ref=(document.getElementById('airRef').value||'').trim();
@@ -3623,7 +3700,7 @@ function pubNoToken(){
 }
 
 function pubB64(s){ return btoa(unescape(encodeURIComponent(s))); }
-function publishState(){ return JSON.stringify({rows:rows, cPOs:cPOs, bookedPOs:bookedPOs, nextContDate:nextContDate, customerMaps:customerMaps, containerAliases:containerAliases, fabricReport:fabricReport, fabricMap:fabricMap, savedAt:new Date().toISOString()}, stripInHouse); }
+function publishState(){ return JSON.stringify({rows:rows, cPOs:cPOs, bookedPOs:bookedPOs, nextContDate:nextContDate, airEtaDate:airEtaDate, customerMaps:customerMaps, containerAliases:containerAliases, fabricReport:fabricReport, fabricMap:fabricMap, savedAt:new Date().toISOString()}, stripInHouse); }
 function publishDownload(json, why){
   var blob = new Blob([json], {type:'application/json'});
   var a = document.createElement('a');
@@ -3702,7 +3779,7 @@ function dbSave(){ clearTimeout(saveTimer); saveTimer=setTimeout(saveState,1200)
 function saveState(){
   var json='';
   try{
-    json=JSON.stringify({rows:rows,cPOs:cPOs,bookedPOs:bookedPOs,nextContDate:nextContDate,customerMaps:customerMaps,containerAliases:containerAliases,fabricReport:fabricReport,fabricMap:fabricMap,savedAt:new Date().toISOString()}, stripInHouse);
+    json=JSON.stringify({rows:rows,cPOs:cPOs,bookedPOs:bookedPOs,nextContDate:nextContDate,airEtaDate:airEtaDate,customerMaps:customerMaps,containerAliases:containerAliases,fabricReport:fabricReport,fabricMap:fabricMap,savedAt:new Date().toISOString()}, stripInHouse);
   }catch(e){ console.log('Save failed:',e); saveFailed('could not serialise'); return; }
   var localOK=false;
   try{ localStorage.setItem('tibard_v5',json); localOK=true; }catch(e){ console.log('localStorage save failed:',e); }
@@ -3723,7 +3800,7 @@ function applyState(s){
   try{
     stateLoadedAt=s.savedAt||''; legacyPrices=null;
     if(!s.rows||!s.rows.length) return false;
-    rows=s.rows; cPOs=s.cPOs||[]; bookedPOs=s.bookedPOs||[]; ensureUIDs(); nextContDate=s.nextContDate||null; customerMaps=s.customerMaps||{}; containerAliases=s.containerAliases||{};
+    rows=s.rows; cPOs=s.cPOs||[]; bookedPOs=s.bookedPOs||[]; ensureUIDs(); nextContDate=s.nextContDate||null; airEtaDate=s.airEtaDate||null; customerMaps=s.customerMaps||{}; containerAliases=s.containerAliases||{};
     fabricReport=(s.fabricReport&&s.fabricReport.fabrics)?s.fabricReport:null; fabricMap=s.fabricMap||{}; _lineCache=null; _resolveCache={};
     // Prices used to travel in this state; pricesLocalLoad takes them over once
     if(s.ckwPrices&&typeof s.ckwPrices==='object'&&Object.keys(s.ckwPrices).length) legacyPrices={ckwPrices:s.ckwPrices, ckwPricesAt:s.ckwPricesAt||s.savedAt||''};
@@ -3760,7 +3837,7 @@ function clearAll(){
   try{
     localStorage.removeItem('tibard_v5');
     try{ idbOpen(function(db){ if(!db) return; try{ db.transaction(IDB_STORE,'readwrite').objectStore(IDB_STORE).delete('state'); }catch(e){} }); }catch(e){}
-    rows=[];cPOs=[];bookedPOs=[];nextContDate=null;customerMaps={};containerAliases={};fabricReport=null;fabricMap={};_lineCache=null;_resolveCache={};fabricModel=null;
+    rows=[];cPOs=[];bookedPOs=[];nextContDate=null;airEtaDate=null;customerMaps={};containerAliases={};fabricReport=null;fabricMap={};_lineCache=null;_resolveCache={};fabricModel=null;
     document.getElementById('dataWrap').classList.add('hidden');
     document.getElementById('uzone').classList.remove('hidden');
     document.getElementById('sbar').style.display='none';
@@ -3778,7 +3855,7 @@ function fetchSharedData(cb){
     return r.json();
   }).then(function(s){
     if(s && s.rows && s.rows.length){
-      rows = s.rows; ensureUIDs(); cPOs = s.cPOs || []; bookedPOs = s.bookedPOs || []; nextContDate = s.nextContDate || null; customerMaps = s.customerMaps || {}; containerAliases = s.containerAliases || {};
+      rows = s.rows; ensureUIDs(); cPOs = s.cPOs || []; bookedPOs = s.bookedPOs || []; nextContDate = s.nextContDate || null; airEtaDate = s.airEtaDate || null; customerMaps = s.customerMaps || {}; containerAliases = s.containerAliases || {};
       fabricReport=(s.fabricReport&&s.fabricReport.fabrics)?s.fabricReport:null; fabricMap=s.fabricMap||{}; _lineCache=null; _resolveCache={};
       var sa = s.savedAt ? new Date(s.savedAt).toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
       document.getElementById('lastUpdated').textContent = 'Published: ' + sa;
