@@ -1,5 +1,8 @@
 <!DOCTYPE html>
 <!-- Changelog
+  2026-11-05  Fabric usage import: the OrderDates column (when Clockwork placed their cloth order)
+              is no longer read as ETAs; QtyOst metres pair with the expected-date list to its
+              right. Needs the file importing again. Stored data unchanged.
   2026-11-05  Fabric usage import: ETA dates are always read year/month/day, as Clockwork write
               them. The "Dates in file" dropdown, auto-detect and the "Re-read ETA dates" button
               are removed. Stored data unchanged.
@@ -3215,9 +3218,12 @@ function parseFabricGrid(grid){
   var etaCols=(cols.eta||[]).slice();
   for(var j=lastKnown+1;j<(grid[hdrIdx]||[]).length+6;j++) if(etaCols.indexOf(j)<0) etaCols.push(j);
   if(cols.eta) cols.eta.forEach(function(j){ if(etaCols.indexOf(j)<0) etaCols.push(j); });
-  // The Nov 2026 layout: metres in "QtyOst" and the dates in "OrderDates", each a
-  // "|" list in step with the other. Both are ETA columns; pairEtaCells joins them.
-  ['qtyost','qtyoutstanding','orderdates','orderdate','etadates'].forEach(function(k){ if(cols[k]!==undefined && etaCols.indexOf(cols[k])<0) etaCols.push(cols[k]); });
+  // The Nov 2026 layout: metres in "QtyOst", the dates the cloth was ordered in
+  // "OrderDates" (not ETAs, so never read), and the expected dates in a column
+  // further right, each a "|" list in step with the others. QtyOst is an ETA
+  // column; pairEtaCells joins its metres to the ETA dates.
+  ['qtyost','qtyoutstanding','etadates','expecteddates','eta'].forEach(function(k){ var j=cols[k]; if(typeof j==='number' && etaCols.indexOf(j)<0) etaCols.push(j); });
+  ['orderdates','orderdate','dateordered','orderedon'].forEach(function(k){ var j=cols[k]; if(j!==undefined){ etaCols=etaCols.filter(function(x){ return x!==j; }); } });
   etaCols.sort(function(a,b){ return a-b; });
   var fabrics=[], started=false;
   for(var r=hdrIdx+1;r<grid.length;r++){
@@ -3264,11 +3270,11 @@ function pairEtaCells(cells){
   var isQty=function(c){ return typeof c==='string' && /^[\d.,\s|;]+$/.test(c) && !NUM_DATE_RE.test(c) && toks(c).every(function(t){ return /^[\d,]*\.?\d+$/.test(t); }); };
   var isDates=function(c){ return typeof c==='string' && toks(c).length>0 && toks(c).every(function(t){ return NUM_DATE_RE.test(t) && !/[A-Z]/i.test(t); }); };
   var qi=-1, di=-1;
-  cells.forEach(function(c,i){ if(qi<0 && isQty(c) && (toks(c).length>1 || cells.some(isDates))) qi=i; else if(di<0 && isDates(c)) di=i; });
+  cells.forEach(function(c,i){ if(qi<0 && isQty(c) && (toks(c).length>1 || cells.some(isDates))) qi=i; else if(isDates(c)) di=i; });   // last dates cell: ETAs sit right of any order dates
   if(qi<0 || di<0) return cells;
   var q=toks(cells[qi]), d=toks(cells[di]), out=[], n=Math.max(q.length, d.length);
   for(var i=0;i<n;i++) out.push(((q[i]||'')+' '+(d[i]||'')).trim());
-  return cells.filter(function(c,i){ return i!==qi && i!==di; }).concat(out);
+  return cells.filter(function(c,i){ return i!==qi && i!==di && !isDates(c); }).concat(out);   // any other pure date list is order dates, not ETAs
 }
 // One ETA cell -> the ETA lines in it. "2026/11/05 | 2026/12/10" is two.
 function parseEtaCell(raw, reportDate, fmt){
