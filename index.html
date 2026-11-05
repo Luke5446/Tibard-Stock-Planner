@@ -1,5 +1,9 @@
 <!DOCTYPE html>
 <!-- Changelog
+  2026-11-05  Fabric usage import: where the report keeps metres in one column (QtyOst,
+              "5000.0 | 3000.0") and the dates in another (OrderDates, "2026/11/16 | 2027/01/15"),
+              the two lists are paired in order, so each ETA carries its own metres instead of
+              an equal share of the on-order total. Needs the file importing again. Stored data unchanged.
   2026-11-05  Fabric usage import: ETA dates are read in whichever order the file uses. A cell such
               as "2026/11/05 | 2026/12/10" (year first, several dates in one cell) now gives one
               ETA line per date, and "11/05/2026" is read as 5 Nov when the file is month-first.
@@ -3219,6 +3223,9 @@ function parseFabricGrid(grid){
   var etaCols=(cols.eta||[]).slice();
   for(var j=lastKnown+1;j<(grid[hdrIdx]||[]).length+6;j++) if(etaCols.indexOf(j)<0) etaCols.push(j);
   if(cols.eta) cols.eta.forEach(function(j){ if(etaCols.indexOf(j)<0) etaCols.push(j); });
+  // The Nov 2026 layout: metres in "QtyOst" and the dates in "OrderDates", each a
+  // "|" list in step with the other. Both are ETA columns; pairEtaCells joins them.
+  ['qtyost','qtyoutstanding','orderdates','orderdate','etadates'].forEach(function(k){ if(cols[k]!==undefined && etaCols.indexOf(cols[k])<0) etaCols.push(cols[k]); });
   etaCols.sort(function(a,b){ return a-b; });
   var fabrics=[], started=false;
   for(var r=hdrIdx+1;r<grid.length;r++){
@@ -3226,7 +3233,7 @@ function parseFabricGrid(grid){
     if(!code){ if(started) break; else continue; }
     if(norm(code)==='stockcode') break;
     started=true;
-    var etasRaw=etaCols.map(function(j){ return row[j]; }).filter(function(v){ return v!==undefined && v!==null && String(v).trim()!==''; });
+    var etasRaw=pairEtaCells(etaCols.map(function(j){ return row[j]; }).filter(function(v){ return v!==undefined && v!==null && String(v).trim()!==''; }));
     fabrics.push({wh:String(get(row,'warehouse')||'').trim(), code:code, desc:String(get(row,'description')||'').trim(), styles:String(row[styleCol]||'').trim(),
       onHand:pn(String(get(row,'qtyonhand')||'')), onOrder:pn(String(get(row,'qtyonorder')||'')), safety:pn(String(get(row,'safetystockqty')||'')), jobDemand:pn(String(get(row,'jobdemand')||'')), avgMonthly:pn(String(get(row,'avgmonthlyusage')||'')), totalDemand:pn(String(get(row,'totaldemand')||'')), etasRaw:etasRaw});
   }
@@ -3282,6 +3289,21 @@ function detectDateFormat(rawCells, reportDate){
   if(mdyOnly && !dmyOnly) return {fmt:'mdy', n:n, ambiguous:false, why:'a day over 12', example:ex};
   if(mdyOk>dmyOk) return {fmt:'mdy', n:n, ambiguous:true, why:mdyOk+' of '+n+' dates land after the report date this way, '+dmyOk+' the other', example:ex};
   return {fmt:'dmy', n:n, ambiguous:true, why:dmyOk===mdyOk?'both orders fit, UK assumed':dmyOk+' of '+n+' dates land after the report date this way, '+mdyOk+' the other', example:ex};
+}
+// A row whose metres and dates sit in two cells ("5000.0 | 3000.0" and
+// "2026/11/16 | 2027/01/15") is joined into one text per ETA, "5000.0 2026/11/16",
+// so the metres land on the right date. Other cells pass through untouched.
+function pairEtaCells(cells){
+  cells=cells.map(function(c){ return (typeof c==='number' && !(c>30000 && c<80000)) ? String(c) : c; });   // a bare number cell is metres (a date serial stays a date)
+  var toks=function(c){ return String(c).split(/\s*[|;\n]\s*/).map(function(t){ return t.trim(); }).filter(Boolean); };
+  var isQty=function(c){ return typeof c==='string' && /^[\d.,\s|;]+$/.test(c) && !NUM_DATE_RE.test(c) && toks(c).every(function(t){ return /^[\d,]*\.?\d+$/.test(t); }); };
+  var isDates=function(c){ return typeof c==='string' && toks(c).length>0 && toks(c).every(function(t){ return NUM_DATE_RE.test(t) && !/[A-Z]/i.test(t); }); };
+  var qi=-1, di=-1;
+  cells.forEach(function(c,i){ if(qi<0 && isQty(c) && (toks(c).length>1 || cells.some(isDates))) qi=i; else if(di<0 && isDates(c)) di=i; });
+  if(qi<0 || di<0) return cells;
+  var q=toks(cells[qi]), d=toks(cells[di]), out=[], n=Math.max(q.length, d.length);
+  for(var i=0;i<n;i++) out.push(((q[i]||'')+' '+(d[i]||'')).trim());
+  return cells.filter(function(c,i){ return i!==qi && i!==di; }).concat(out);
 }
 // One ETA cell -> the ETA lines in it. "2026/11/05 | 2026/12/10" is two.
 function parseEtaCell(raw, reportDate, fmt){
