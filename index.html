@@ -1,5 +1,14 @@
 <!DOCTYPE html>
 <!-- Changelog
+  2026-11-05  Fabric usage import: ETA dates are read in whichever order the file uses. A cell such
+              as "2026/11/05 | 2026/12/10" (year first, several dates in one cell) now gives one
+              ETA line per date, and "11/05/2026" is read as 5 Nov when the file is month-first.
+              The order is detected per file (a day over 12, then whichever order keeps the ETAs
+              after the report date) and can be forced from the "Dates in file" box. ETA lines
+              with no metres share the cloth's on-order metres equally (shown as "~"). A
+              "Re-read ETA dates" button on the tab fixes a report already imported, without
+              re-importing. New optional fields only (dateFormat on the report, est/cell on an
+              ETA line); stored data unchanged.
   2026-10-30  Air qty shows the cartons it makes underneath (e.g. "4 ctn x 80"). The Air qty and
               Air wks columns now appear only when filtered on Needs air freight (tile or
               dropdown); quantities are kept and exported as before. Stored data unchanged.
@@ -583,9 +592,16 @@ body.viewer-mode .view-only{display:block !important}
           <button class="btn btn-p" style="font-size:12px" onclick="fabricImportClick()">&#128196; Choose the .xlsx</button>
           <span>or paste the whole sheet below (headings included) and</span>
           <button class="btn" style="font-size:12px" onclick="fabricImportPaste()">&#10003; Load pasted</button>
+          <label style="font-weight:600;color:#1F3864;margin-left:6px">Dates in file</label>
+          <select id="fabDateFmt" title="How a date like 11/05/2026 in the ETA columns should be read. Auto looks at the whole file: a day over 12 settles it, otherwise the order that keeps the ETAs after the report date wins.">
+            <option value="auto">Auto-detect</option>
+            <option value="dmy">Day/Month/Year (UK)</option>
+            <option value="mdy">Month/Day/Year (US)</option>
+            <option value="ymd">Year/Month/Day</option>
+          </select>
         </p>
         <textarea id="fabTA" placeholder="Click here then Ctrl+V the TIBARD FABRIC USAGE REPORT sheet..."></textarea>
-        <p class="foot">Read by heading: StockCode, Description, the styles column (Column1, used for the mapping, never shown), QtyOnHand, QtyOnOrder, SafetyStockQty, AvgMonthlyUsage, JobDemand and every ETA column. The report date sets the year on ETAs like "NOV 23". Importing replaces the previous report; the cloth and figures set below are kept.</p>
+        <p class="foot">Read by heading: StockCode, Description, the styles column (Column1, used for the mapping, never shown), QtyOnHand, QtyOnOrder, SafetyStockQty, AvgMonthlyUsage, JobDemand and every ETA column. The report date sets the year on ETAs like "NOV 23". A cell holding several dates ("2026/11/05 | 2026/12/10") gives one ETA line per date; ETA lines with no metres share the cloth's on-order metres equally. Importing replaces the previous report; the cloth and figures set below are kept.</p>
       </div>
     </div>
     <div id="fabEmpty" class="uzone">
@@ -3044,7 +3060,8 @@ function renderFabric(){
   var M=fabricModel, open=fabricOpenPOs();
   if(meta) meta.innerHTML='Clockwork report dated <strong>'+fmtD(fabricReport.reportDate)+'</strong>'+(fabricReport.fileName?' ('+esc(fabricReport.fileName)+')':'')+', imported '+new Date(fabricReport.importedAt).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})+' &middot; '+fabricRows().length+' cloths. '
     +'Demand is ours only: <strong>'+(open.length?open.map(function(p){ return esc(p.ref); }).join(', '):'no open containers')+'</strong>'+(plannedItems().length?' and the container being planned':'')+'. '
-    +(cPOs.filter(poShipped).length?'Shipped (cloth already cut, not counted): '+cPOs.filter(poShipped).map(function(p){ return esc(p.ref); }).join(', ')+'. ':'')+'<span style="color:#6b7280">Tick Shipped on a container card to change that.</span>';
+    +(cPOs.filter(poShipped).length?'Shipped (cloth already cut, not counted): '+cPOs.filter(poShipped).map(function(p){ return esc(p.ref); }).join(', ')+'. ':'')+'<span style="color:#6b7280">Tick Shipped on a container card to change that.</span>'
+    +(IS_EDITOR?' <span class="edit-only" style="white-space:nowrap">&middot; ETA dates read as <strong>'+esc(fabricFmtName(fabricReport.dateFormat||'dmy'))+'</strong> <select id="fabReFmt" style="font-size:11px;padding:2px 4px"><option value="auto">Auto-detect</option><option value="dmy">Day/Month/Year</option><option value="mdy">Month/Day/Year</option><option value="ymd">Year/Month/Day</option></select> <button class="btn" style="font-size:10px;padding:2px 7px" onclick="fabricReparseDates()" title="Reads every ETA cell of the imported report again in the chosen date order. Use this when a report was imported with its dates the wrong way round (11 May instead of 5 Nov).">&#8635; Re-read ETA dates</button></span>':'');
   var counts={critical:0, low:0, ok:0, none:0}; M.order.forEach(function(k){ counts[M.by[k].status]++; });
   var active=document.getElementById('fabFilter').value;
   document.getElementById('fabTiles').innerHTML=[
@@ -3092,7 +3109,7 @@ function fabTile(k){ var sel=document.getElementById('fabFilter'); if(k==='gaps'
 function fabricDetailHTML(x){
   var e=x.e, L=x.L, M=fabricModel;
   var etas=L.etas.length ? '<table class="ptbl"><thead><tr><th style="text-align:left">On PO</th><th>Metres</th><th style="text-align:left">ETA</th><th>Wks away</th></tr></thead><tbody>'
-    +L.etas.map(function(t){ var late=t.date&&t.date<M.today; return '<tr'+(late?' class="rw-warn"':'')+'><td style="text-align:left;font-family:monospace;font-size:10px">'+esc(t.of)+'</td><td>'+(t.qty!=null?fm(t.qty):'?')+'</td><td style="text-align:left">'+(t.date?fmtD(t.date):'<span style="color:#92400e">'+esc(t.note||t.raw||'no date')+'</span>')+'</td><td>'+(t.date?wksUntil(t.date).toFixed(1):'&mdash;')+'</td></tr>'; }).join('')
+    +L.etas.map(function(t){ var late=t.date&&t.date<M.today; return '<tr'+(late?' class="rw-warn"':'')+'><td style="text-align:left;font-family:monospace;font-size:10px">'+esc(t.of)+'</td><td title="'+(t.est?'Share of the on-order metres: the report gives dates only':'')+'">'+(t.qty!=null?(t.est?'~':'')+fm(t.qty):'?')+'</td><td style="text-align:left">'+(t.date?fmtD(t.date):'<span style="color:#92400e">'+esc(t.note||t.raw||'no date')+'</span>')+'</td><td>'+(t.date?wksUntil(t.date).toFixed(1):'&mdash;')+'</td></tr>'; }).join('')
     +'</tbody></table>' : '<p style="color:#6b7280;font-size:11px">Nothing on order.</p>';
   var sumEta=L.etas.reduce(function(s,t){ return s+(t.qty||0); },0);
   if(L.onOrder>0 && Math.abs(sumEta-L.onOrder)>L.onOrder*0.01) etas+='<p class="foot">ETA lines total '+fmM(sumEta)+' against '+fmM(L.onOrder)+' on order.</p>';
@@ -3174,11 +3191,15 @@ function fabricImportGrid(grid, fileName){
   var rep=parseFabricGrid(grid);
   if(!rep || !rep.fabrics.length){ alert('No fabric rows found. The sheet needs the headings StockCode, Description, QtyOnHand, QtyOnOrder and the styles column (Column1), with the ETA columns after.'); return; }
   var dateEl=document.getElementById('fabDate'), rd=(dateEl&&dateEl.value)||d2s(now());
-  rep.fabrics.forEach(function(f){ f.etas=f.etasRaw.map(function(raw){ return parseEta(raw, rd); }).filter(Boolean); delete f.etasRaw; });
+  var fmtEl=document.getElementById('fabDateFmt'), want=(fmtEl&&fmtEl.value)||'auto';
+  var allRaw=[]; rep.fabrics.forEach(function(f){ allRaw=allRaw.concat(f.etasRaw); });
+  var det=detectDateFormat(allRaw, rd), fmt=want==='auto'?det.fmt:want;
+  rep.fabrics.forEach(function(f){ f.etas=fabricParseEtas(f.etasRaw, rd, fmt); fabricFillEtaQty(f); delete f.etasRaw; });
   var nDated=rep.fabrics.reduce(function(s,f){ return s+f.etas.filter(function(e){ return e.date; }).length; },0), nEta=rep.fabrics.reduce(function(s,f){ return s+f.etas.length; },0);
   var unknown=rep.fabrics.filter(function(f){ return !f.styles; }).length;
-  if(!confirm('Import '+rep.fabrics.length+' cloths from the Clockwork report dated '+fmtD(rd)+'?\n\n'+nEta+' ETA lines, '+nDated+' with a date'+(unknown?'; '+unknown+' cloths with no styles listed':'')+'.\n\nThis replaces the report imported before; mappings set on this tab are kept.')) return;
-  fabricReport={reportDate:rd, importedAt:new Date().toISOString(), fileName:fileName||'', fabrics:rep.fabrics};
+  var fmtMsg=det.ambiguous&&want==='auto' ? '\n\nDates like '+det.example+' read as '+fabricFmtName(fmt)+' ('+det.why+'). Pick "Dates in file" before importing to force the other order.' : (det.n?'\n\nDates read as '+fabricFmtName(fmt)+(want==='auto'?' ('+det.why+')':' (set by you)')+'.':'');
+  if(!confirm('Import '+rep.fabrics.length+' cloths from the Clockwork report dated '+fmtD(rd)+'?\n\n'+nEta+' ETA lines, '+nDated+' with a date'+(unknown?'; '+unknown+' cloths with no styles listed':'')+'.'+fmtMsg+'\n\nThis replaces the report imported before; mappings set on this tab are kept.')) return;
+  fabricReport={reportDate:rd, importedAt:new Date().toISOString(), fileName:fileName||'', dateFormat:fmt, fabrics:rep.fabrics};
   _lineCache=null; _resolveCache={};
   document.getElementById('fabImportBox').classList.add('hidden');
   var ta=document.getElementById('fabTA'); if(ta) ta.value='';
@@ -3212,11 +3233,77 @@ function parseFabricGrid(grid){
   return {fabrics:fabrics};
 }
 // "10013.7M  OCT 25", "25012.50 M NOV.23", "5000M ETA DEC. 15", "30000M IN
-// PRODUCTION", "3000 TBC", or a real date: metres, and the date if it has
-// one. The year is the report's, or the next one once the month is behind
-// the report date.
+// PRODUCTION", "3000 TBC", "11/05/2026", "2026/11/05 | 2026/12/10", or a real
+// date: metres, and the date if it has one. The year is the report's, or the
+// next one once the month is behind the report date. fmt says which way round
+// a numeric date is: 'dmy' (UK, the default), 'mdy' (US) or 'ymd'; a date
+// written year-first is always read year-first whatever fmt says.
 var MONTHS={JAN:0,FEB:1,MAR:2,APR:3,MAY:4,JUN:5,JUL:6,AUG:7,SEP:8,SEPT:8,OCT:9,NOV:10,DEC:11};
-function parseEta(raw, reportDate){
+var FABRIC_FMT_NAMES={dmy:'Day/Month/Year', mdy:'Month/Day/Year', ymd:'Year/Month/Day', auto:'Auto-detect'};
+function fabricFmtName(f){ return FABRIC_FMT_NAMES[f]||f; }
+var NUM_DATE_RE=/\b(\d{1,4})[\/.\-](\d{1,2})[\/.\-](\d{1,4})\b|\b(\d{1,2})[\/.](\d{1,2})\b/;
+// A numeric date in text, read as fmt. Year-first forms (2026/11/05) are
+// taken as such regardless of fmt. Returns 'YYYY-MM-DD' or null.
+function numDate(str, fmt, defYear){
+  var m=NUM_DATE_RE.exec(str); if(!m) return null;
+  var a,b,c,d,mo,y;
+  if(m[1]!==undefined){ a=parseInt(m[1],10); b=parseInt(m[2],10); c=parseInt(m[3],10);
+    if(m[1].length===4 || a>31){ y=a; mo=b; d=c; }                           // 2026/11/05
+    else if(fmt==='mdy'){ mo=a; d=b; y=c; }
+    else { d=a; mo=b; y=c; }
+    if(y<100) y+=2000;
+  } else { a=parseInt(m[4],10); b=parseInt(m[5],10); y=defYear;            // 11/05, no year
+    if(fmt==='mdy'){ mo=a; d=b; } else { d=a; mo=b; } }
+  var ok=function(mo,d){ if(!(mo>=1 && mo<=12 && d>=1 && d<=31)) return null; var dt=new Date(y,mo-1,d); return dt.getMonth()===mo-1?d2s(dt):null; };
+  var r=ok(mo,d);
+  if(!r && !(m[1]!==undefined && (m[1].length===4 || a>31))) r=ok(d,mo);   // 13/11 forced as month-first: the other way round is the only reading
+  return r;
+}
+// Looks at every numeric date in the file and says which way round the day
+// and month are. A day over 12 settles it; otherwise the order that keeps
+// most ETAs between the report date and 18 months on wins; a dead heat is UK.
+function detectDateFormat(rawCells, reportDate){
+  var rd=reportDate?new Date(reportDate):now(), lo=d2s(new Date(rd.getTime()-60*864e5)), hi=d2s(new Date(rd.getTime()+548*864e5));
+  var n=0, dmyOnly=0, mdyOnly=0, dmyOk=0, mdyOk=0, ex='', ymd=0;
+  (rawCells||[]).forEach(function(raw){
+    if(raw===undefined || raw===null || typeof raw!=='string') return;
+    String(raw).split(/\s*[|;\n]\s*/).forEach(function(tok){
+      var m=NUM_DATE_RE.exec(tok); if(!m) return;
+      var a=parseInt(m[1]!==undefined?m[1]:m[4],10), b=parseInt(m[2]!==undefined?m[2]:m[5],10);
+      if(m[1]!==undefined && (m[1].length===4 || a>31)){ ymd++; return; }   // year first: no ambiguity
+      n++; if(!ex) ex=m[0];
+      if(a>12) dmyOnly++; if(b>12) mdyOnly++;
+      var D=numDate(tok,'dmy',rd.getFullYear()), M=numDate(tok,'mdy',rd.getFullYear());
+      if(D && D>=lo && D<=hi) dmyOk++; if(M && M>=lo && M<=hi) mdyOk++;
+    });
+  });
+  if(!n) return {fmt:ymd?'ymd':'dmy', n:ymd, ambiguous:false, why:ymd?'written year first':'no numeric dates', example:ex};
+  if(dmyOnly && !mdyOnly) return {fmt:'dmy', n:n, ambiguous:false, why:'a day over 12', example:ex};
+  if(mdyOnly && !dmyOnly) return {fmt:'mdy', n:n, ambiguous:false, why:'a day over 12', example:ex};
+  if(mdyOk>dmyOk) return {fmt:'mdy', n:n, ambiguous:true, why:mdyOk+' of '+n+' dates land after the report date this way, '+dmyOk+' the other', example:ex};
+  return {fmt:'dmy', n:n, ambiguous:true, why:dmyOk===mdyOk?'both orders fit, UK assumed':dmyOk+' of '+n+' dates land after the report date this way, '+mdyOk+' the other', example:ex};
+}
+// One ETA cell -> the ETA lines in it. "2026/11/05 | 2026/12/10" is two.
+function parseEtaCell(raw, reportDate, fmt){
+  if(raw===undefined || raw===null) return [];
+  if(typeof raw!=='string'){ var one=parseEta(raw, reportDate, fmt); return one?[one]:[]; }
+  var parts=raw.split(/\s*[|;\n]\s*/).filter(function(t){ return t.trim(); });
+  var out=parts.map(function(t){ return parseEta(t, reportDate, fmt); }).filter(Boolean);
+  if(parts.length>1) out.forEach(function(e){ e.cell=raw; });
+  return out;
+}
+function fabricParseEtas(rawCells, reportDate, fmt){ var out=[]; (rawCells||[]).forEach(function(raw){ out=out.concat(parseEtaCell(raw, reportDate, fmt)); }); return out; }
+// ETA lines with a date but no metres (the new report lists dates only)
+// share the cloth's on-order metres equally, marked est so the tab shows "~".
+function fabricFillEtaQty(f){
+  var dated=(f.etas||[]).filter(function(e){ return e.date; });
+  var noQty=dated.filter(function(e){ return !(e.qty>0); });
+  if(!noQty.length || !(f.onOrder>0)) return;
+  var known=dated.reduce(function(s,e){ return s+(e.qty>0?e.qty:0); },0), left=Math.max(0, f.onOrder-known);
+  noQty.forEach(function(e){ e.qty=Math.round(left/noQty.length*10)/10; e.est=true; });
+}
+function parseEta(raw, reportDate, fmt){
+  fmt=fmt||'dmy';
   if(raw===undefined || raw===null) return null;
   var out={qty:null, date:null, note:'', raw:''};
   if(raw instanceof Date){ out.date=d2s(raw); out.raw=d2s(raw); return out; }
@@ -3225,20 +3312,35 @@ function parseEta(raw, reportDate){
   out.raw=s;
   var iso=/^(\d{4})-(\d{2})-(\d{2})/.exec(s); if(iso){ out.date=iso[0]; return out; }
   var up=s.toUpperCase();
-  var q=/(-?[\d,]*\.?\d+)\s*M?\b/.exec(up); if(q){ out.qty=pn(q[1]); up=up.slice(q.index+q[0].length); }
-  var m=/(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*\.?\s*(\d{1,2})?/.exec(up);
   var rd=reportDate?new Date(reportDate):now(), y=rd.getFullYear();
+  // A numeric date comes out first, so "2026/11/05" is never read as 2026 metres.
+  var nd=NUM_DATE_RE.exec(up), ndDate=nd?numDate(nd[0], fmt, y):null;
+  if(ndDate){ out.date=ndDate; up=(up.slice(0,nd.index)+' '+up.slice(nd.index+nd[0].length)).trim(); }
+  var q=/(-?[\d,]*\.?\d+)\s*M?\b/.exec(up); if(q){ out.qty=pn(q[1]); up=up.slice(q.index+q[0].length); }
+  if(out.date) return out;
+  var m=/(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*\.?\s*(\d{1,2})?/.exec(up);
   if(m){
     var mo=MONTHS[m[1]], day=m[2]?parseInt(m[2],10):1;
     if(mo<rd.getMonth()-1) y+=1;
     var d=new Date(y,mo,Math.min(day,28)); if(day>28) d=new Date(y,mo,day);
     out.date=d2s(d);
   } else {
-    var dm=/(\d{1,2})[\/.](\d{1,2})(?:[\/.](\d{2,4}))?/.exec(up);
-    if(dm){ var yy=dm[3]?parseInt(dm[3],10):y; if(yy<100) yy+=2000; out.date=d2s(new Date(yy,parseInt(dm[2],10)-1,parseInt(dm[1],10))); }
-    else out.note=up.replace(/^\s*(ETA)?\s*/,'').trim()||'no date';
+    out.note=up.replace(/^\s*(ETA)?\s*/,'').trim()||'no date';
   }
   return out;
+}
+// Reads every ETA cell of the imported report again in the chosen date order.
+// Fixes a report whose dates came in the wrong way round, without re-importing.
+function fabricReparseDates(){ if(!IS_EDITOR || !fabricReport) return;
+  var sel=document.getElementById('fabReFmt'), want=(sel&&sel.value)||'auto', rd=fabricReport.reportDate||d2s(now());
+  var cells=function(f){ var seen={}, out=[]; (f.etas||[]).forEach(function(e){ var c=e.cell||e.raw; if(c===undefined||c===null||c==='') return; var k=String(c); if(e.cell && seen[k]) return; seen[k]=true; out.push(c); }); return out; };
+  var allRaw=[]; fabricReport.fabrics.forEach(function(f){ allRaw=allRaw.concat(cells(f)); });
+  var det=detectDateFormat(allRaw, rd), fmt=want==='auto'?det.fmt:want;
+  if(!confirm('Re-read the ETA dates of the report dated '+fmtD(rd)+' as '+fabricFmtName(fmt)+(want==='auto'?' ('+det.why+')':'')+'?\n\nMetres typed per ETA line are kept; dates and lines are rebuilt from the report text.')) return;
+  fabricReport.fabrics.forEach(function(f){ f.etas=fabricParseEtas(cells(f), rd, fmt); fabricFillEtaQty(f); });
+  fabricReport.dateFormat=fmt; fabricReport.importedAt=new Date().toISOString();
+  _lineCache=null; _resolveCache={};
+  saveState(); fabricRefresh(); renderFabric();
 }
 // A minimal .xlsx reader: the zip directory, each part inflated by the
 // browser, shared strings, and the first sheet's cells as a grid.
