@@ -1,5 +1,9 @@
 <!DOCTYPE html>
 <!-- Changelog
+  2026-11-05  Fabric usage tab: new "Report for Clockwork" button opens a printable A4 report
+              (Print / Save as PDF) of every Critical cloth: Clockwork's figures as imported,
+              each PO line with its ETA, our container demand in priority order, and a
+              confirmation checklist, plus a summary of Low cloths. Stored data unchanged.
   2026-11-05  Fabric usage import: the OrderDates column (when Clockwork placed their cloth order)
               is no longer read as ETAs; QtyOst metres pair with the expected-date list to its
               right. Needs the file importing again. Stored data unchanged.
@@ -584,6 +588,7 @@ body.viewer-mode .view-only{display:block !important}
       <div class="rpt-ctl">
         <h3 style="margin:0">&#129525; Clockwork fabric usage</h3>
         <button class="btn btn-p edit-only" style="font-size:12px" onclick="document.getElementById('fabImportBox').classList.toggle('hidden')">&#8681; Import Clockwork report</button>
+        <button class="btn" style="font-size:12px" onclick="fabricClockworkReport()" title="Opens a printable report of every Critical cloth (and a summary of Low) with Clockwork's figures, their ETAs and our container demand, to send to Clockwork to check the data. Use the browser's Print / Save as PDF.">&#128196; Report for Clockwork</button>
         <input type="text" id="fabSearch" placeholder="&#128269; Filter cloth or colour..." oninput="renderFabric()" style="font-size:12px;padding:5px 9px;border-radius:5px;border:1px solid #c8d0df;background:#fff;min-width:170px;font-family:Arial,sans-serif">
         <select id="fabFilter" onchange="renderFabric()">
           <option value="">All cloths</option>
@@ -3126,6 +3131,94 @@ function fabricDetailHTML(x){
   if(!e.byPO.length) cover='<p style="color:#6b7280;font-size:11px">No open container takes this cloth.</p>';
   var ck='<p class="foot">Clockwork\'s own figures: job demand '+fmM(L.jobDemand)+' (all their customers), safety stock '+fmM(L.safety)+', average monthly usage '+fmM(L.avgMonthly)+'.</p>';
   return '<div class="fab-grid"><div><h4>&#128230; On PO &mdash; ETAs</h4>'+etas+'</div><div><h4>&#128682; Our demand, cut in priority order</h4>'+cover+ck+'</div></div>';
+}
+// ── Report for Clockwork ─────────────────────────────────────────────────────
+// A printable page (new tab; Print / Save as PDF) listing every Critical cloth
+// with Clockwork's own figures exactly as imported, each PO line and ETA, and
+// our container demand in priority order, so Clockwork can confirm the data
+// and we can see the app has read their report correctly. Low cloths are
+// summarised at the end.
+function fabricClockworkReport(){
+  if(!fabricReport){ alert('Import a Clockwork fabric report first.'); return; }
+  if(!fabricModel) buildFabricModel();
+  var M=fabricModel, rows=M.order.map(function(k){ return {key:k, e:M.by[k], L:M.by[k].line}; });
+  var crit=rows.filter(function(x){ return x.e.status==='critical'; }).sort(function(a,b){ return a.e.free-b.e.free; });
+  var low=rows.filter(function(x){ return x.e.status==='low'; }).sort(function(a,b){ return a.e.free-b.e.free; });
+  var today=d2s(now()), open=fabricOpenPOs();
+  var n=function(v){ return (v==null||isNaN(v))?'&mdash;':Math.round(v).toLocaleString(); };
+  var neg=function(v){ return '<span class="'+(v<0?'neg':'')+'">'+n(v)+'</span>'; };
+  var name=function(x){ return esc(fabricLineName(x.key)); };
+  var etaRows=function(L){
+    if(!L.etas.length) return '<p class="muted">Nothing on order for this cloth.</p>';
+    return '<table class="t"><thead><tr><th class="l">Clockwork code</th><th>Metres</th><th class="l">Expected date</th><th>Weeks from today</th><th class="l">As written in the report</th></tr></thead><tbody>'
+      +L.etas.map(function(t){ var late=t.date&&t.date<today; return '<tr'+(late?' class="late"':'')+'><td class="l mono">'+esc(t.of)+'</td><td>'+(t.qty!=null?(t.est?'~':'')+n(t.qty):'?')+'</td><td class="l">'+(t.date?fmtD(t.date)+(late?' <span class="tag">past</span>':''):'<em>'+esc(t.note||'no date')+'</em>')+'</td><td>'+(t.date?wksUntil(t.date).toFixed(1):'&mdash;')+'</td><td class="l mono small">'+esc(t.cell||t.raw||'')+'</td></tr>'; }).join('')
+      +'</tbody></table>'+(L.etas.some(function(t){ return t.est; })?'<p class="muted">~ the report gives dates only for these lines, so the metres on order are shared equally between them. Please confirm the metres per delivery.</p>':'');
+  };
+  var demandRows=function(e, L){
+    if(!e.byPO.length) return '<p class="muted">No open Tibard container takes this cloth.</p>';
+    return '<table class="t"><thead><tr><th class="l">Tibard container</th><th class="l">Due at Tibard</th><th>Garments</th><th>Metres needed</th><th>Cloth left after</th><th class="l">Position</th></tr></thead><tbody>'
+      +'<tr><td class="l muted">At Clockwork now</td><td></td><td></td><td></td><td class="b">'+n(L.onHand)+'</td><td></td></tr>'
+      +e.byPO.map(function(p){
+        var pos=p.short>0 ? (p.coverDate ? 'Short '+n(p.short)+' m; PO expected '+fmtD(p.coverDate)+' ('+wksUntil(p.coverDate).toFixed(1)+' wks)' : 'Short '+n(p.short)+' m; no PO covers it') : 'Covered';
+        var top=Object.keys(p.codes).sort(function(a,b){ return p.codes[b]-p.codes[a]; }).slice(0,8).map(function(c){ return esc(c)+' '+n(p.codes[c])+' m'; }).join(', ');
+        return '<tr'+(p.short>0?' class="late"':'')+'><td class="l b">'+esc(p.ref)+(p.planned?' <span class="tag">planned</span>':'')+'</td><td class="l">'+fmtD(p.date)+'</td><td>'+n(p.units)+'</td><td>'+n(p.m)+'</td><td class="b">'+neg(p.after)+'</td><td class="l">'+pos+'<div class="small muted">'+top+'</div></td></tr>';
+      }).join('')+'</tbody></table>';
+  };
+  var summary=function(list){
+    return '<table class="t sum"><thead><tr><th class="l">Cloth</th><th class="l">Description</th><th class="l">Colour</th><th>At Clockwork</th><th>On PO</th><th>Tibard demand</th><th>Free</th><th>After PO</th><th class="l">Next expected</th></tr></thead><tbody>'
+      +list.map(function(x){ var e=x.e, L=x.L, ne=e.nextEta; return '<tr><td class="l mono b">'+name(x)+'</td><td class="l">'+esc(L.descs[0]||'')+'</td><td class="l">'+esc(L.colour||'')+'</td><td>'+n(L.onHand)+'</td><td>'+(L.onOrder>0?n(L.onOrder):'&mdash;')+'</td><td>'+n(e.demand)+'</td><td>'+neg(e.free)+'</td><td>'+neg(e.afterPO)+'</td><td class="l">'+(ne?(ne.date?fmtD(ne.date)+' &middot; '+(ne.est?'~':'')+n(ne.qty)+' m':esc(ne.note||'no date')):(L.onOrder>0?'no date':'&mdash;'))+'</td></tr>'; }).join('')
+      +'</tbody></table>';
+  };
+  var sections=crit.map(function(x, i){
+    var e=x.e, L=x.L;
+    return '<section class="cloth"><h2><span class="num">'+(i+1)+'</span> '+name(x)+' <span class="desc">'+esc(L.descs.join(' / '))+(L.colour?' &middot; '+esc(L.colour):'')+'</span></h2>'
+      +'<div class="kpis">'
+      +'<div><div class="k">At Clockwork</div><div class="v">'+n(L.onHand)+' m</div></div>'
+      +'<div><div class="k">On PO</div><div class="v">'+n(L.onOrder)+' m</div></div>'
+      +'<div><div class="k">Tibard demand</div><div class="v">'+n(e.demand)+' m</div></div>'
+      +'<div><div class="k">Free</div><div class="v neg">'+n(e.free)+' m</div></div>'
+      +'<div><div class="k">After PO</div><div class="v '+(e.afterPO<0?'neg':'')+'">'+n(e.afterPO)+' m</div></div>'
+      +'<div><div class="k">Safety stock</div><div class="v">'+n(L.safety)+' m</div></div>'
+      +'<div><div class="k">Avg monthly usage</div><div class="v">'+n(L.avgMonthly)+' m</div></div>'
+      +'<div><div class="k">Job demand (all customers)</div><div class="v">'+n(L.jobDemand)+' m</div></div>'
+      +'</div>'
+      +'<div class="two"><div><h3>Cloth on order with Clockwork\'s suppliers</h3>'+etaRows(L)+'</div><div><h3>Tibard containers that cut this cloth, in priority order</h3>'+demandRows(e, L)+'</div></div>'
+      +'<div class="ask"><strong>Please confirm:</strong> &#9744; metres at Clockwork today &nbsp; &#9744; metres on order and the expected date of each delivery &nbsp; &#9744; whether the shortfall of <strong>'+n(e.short)+' m</strong> can be covered, and by when</div>'
+      +'</section>';
+  }).join('');
+  var html='<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Tibard &ndash; Clockwork cloth check '+fmtD(today)+'</title><style>'
+    +'@page{size:A4 landscape;margin:12mm}body{font-family:Arial,Helvetica,sans-serif;color:#111827;margin:0;background:#fff;font-size:11px}'
+    +'.bar{background:#1F3864;color:#fff;padding:16px 24px;display:flex;justify-content:space-between;align-items:flex-end;border-bottom:4px solid #C9A227}'
+    +'.bar h1{margin:0;font-size:20px;letter-spacing:.2px}.bar .sub{font-size:11px;opacity:.9;margin-top:4px}.bar .right{text-align:right;font-size:11px}'
+    +'.wrap{padding:16px 24px}.toolbar{padding:10px 24px;background:#f3f4f6;border-bottom:1px solid #e5e7eb;display:flex;gap:8px;align-items:center;font-size:12px}'
+    +'.toolbar button{background:#1F3864;color:#fff;border:0;border-radius:5px;padding:7px 14px;font-size:12px;cursor:pointer}'
+    +'h2{font-size:15px;color:#1F3864;margin:0 0 8px;border-bottom:2px solid #C9A227;padding-bottom:4px}h2 .desc{font-weight:400;color:#4b5563;font-size:12px}h2 .num{display:inline-block;background:#1F3864;color:#fff;border-radius:4px;padding:1px 7px;font-size:12px;margin-right:4px}'
+    +'h3{font-size:12px;color:#1F3864;margin:10px 0 5px}p{margin:6px 0}.muted{color:#6b7280}.small{font-size:10px}.b{font-weight:700}.mono{font-family:Consolas,Menlo,monospace}.neg{color:#b91c1c;font-weight:700}'
+    +'table.t{border-collapse:collapse;width:100%;font-size:11px}table.t th{background:#e8f0fb;color:#1F3864;text-align:right;padding:5px 7px;border-bottom:1px solid #c8d0df;font-size:10px;text-transform:uppercase;letter-spacing:.3px}table.t td{padding:5px 7px;border-bottom:1px solid #e5e7eb;text-align:right;vertical-align:top}table.t .l{text-align:left}table.t tr.late td{background:#fff7ed}'
+    +'.tag{display:inline-block;background:#fef3c7;color:#92400e;border-radius:3px;padding:0 5px;font-size:9px;font-weight:700;text-transform:uppercase}'
+    +'.kpis{display:grid;grid-template-columns:repeat(8,1fr);gap:8px;margin:8px 0 6px}.kpis>div{border:1px solid #dde3ed;border-radius:6px;padding:6px 8px;background:#fafbfd}.kpis .k{font-size:9px;color:#6b7280;text-transform:uppercase;letter-spacing:.3px}.kpis .v{font-size:14px;font-weight:700;color:#1F3864;margin-top:2px}.kpis .v.neg{color:#b91c1c}'
+    +'.two{display:grid;grid-template-columns:1fr 1.25fr;gap:16px}.cloth{margin:18px 0 0;padding-bottom:12px;border-bottom:1px solid #e5e7eb;page-break-inside:avoid}'
+    +'.ask{margin-top:8px;background:#fffbeb;border:1px solid #f3e4a9;border-radius:6px;padding:7px 10px;font-size:11px}'
+    +'.intro{display:grid;grid-template-columns:1.4fr 1fr;gap:16px;margin-bottom:6px}.box{border:1px solid #dde3ed;border-radius:6px;padding:10px 12px;background:#fafbfd}.box h3{margin-top:0}.box ul{margin:4px 0 0 16px;padding:0}.box li{margin:2px 0}'
+    +'.foot{margin-top:18px;padding-top:8px;border-top:1px solid #e5e7eb;color:#6b7280;font-size:10px}'
+    +'@media print{.toolbar{display:none}.cloth{page-break-inside:avoid}}'
+    +'</style></head><body>'
+    +'<div class="toolbar"><button onclick="window.print()">&#128424; Print / Save as PDF</button><span class="muted">Landscape A4. Close this tab when done.</span></div>'
+    +'<div class="bar"><div><h1>Tibard Ltd &mdash; Clockwork cloth check</h1><div class="sub">Cloth held by Clockwork for Tibard, set against Tibard\'s open container orders</div></div>'
+    +'<div class="right">Prepared '+fmtD(today)+'<br>From Clockwork\'s fabric usage report dated <strong>'+fmtD(fabricReport.reportDate)+'</strong>'+(fabricReport.fileName?'<br><span class="small">'+esc(fabricReport.fileName)+'</span>':'')+'</div></div>'
+    +'<div class="wrap">'
+    +'<div class="intro"><div class="box"><h3>Why we are sending this</h3><p>Tibard reads Clockwork\'s monthly fabric usage report into our container planner and sets the cloth held against the garments on our open containers. The cloths below come out <strong>Critical</strong>: once the containers ahead are cut there is not enough cloth, and no cloth delivery is expected within '+FABRIC_ETA_WKS+' weeks to cover it. Please check the figures are what Clockwork hold today, and tell us where our reading of the report is wrong.</p></div>'
+    +'<div class="box"><h3>How to read it</h3><ul><li><strong>At Clockwork</strong>: metres on hand in the report (QtyOnHand).</li><li><strong>On PO</strong>: metres Clockwork have on order (QtyOnOrder), with each delivery and expected date as written in the report.</li><li><strong>Tibard demand</strong>: metres the open Tibard containers will cut, from our works order usage per garment; containers already shipped are not counted.</li><li><strong>Free</strong> = At Clockwork &minus; Tibard demand. <strong>After PO</strong> = Free + On PO.</li></ul></div></div>'
+    +'<h2>Critical cloths &mdash; '+crit.length+(crit.length===1?' cloth':' cloths')+'</h2>'
+    +(crit.length?summary(crit):'<p class="muted">No cloth is critical.</p>')
+    +'<p class="small muted">Open Tibard containers counted: '+(open.length?open.map(function(p){ return esc(p.ref)+' (due '+fmtD(p.date)+')'; }).join(', '):'none')+(plannedItems().length?', plus the container being planned':'')+'. Metres are to the nearest metre.</p>'
+    +sections
+    +(low.length?'<section class="cloth"><h2>Low &mdash; '+low.length+(low.length===1?' cloth':' cloths')+' <span class="desc">short but a delivery is expected within '+FABRIC_ETA_WKS+' weeks, or under a month of average usage left</span></h2>'+summary(low)+'</section>':'')
+    +'<div class="foot">Tibard Ltd, Dukinfield &middot; Generated by the Tibard Clockwork stock planner on '+fmtD(today)+'. Figures marked ~ are an equal share of the on-order metres where the report gives dates only. Questions: Luke Harrison, Head of Operations.</div>'
+    +'</div></body></html>';
+  var w=window.open('', '_blank');
+  if(!w){ var a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([html],{type:'text/html'})); a.download='Clockwork cloth check '+today+'.html'; document.body.appendChild(a); a.click(); document.body.removeChild(a); return; }
+  w.document.open(); w.document.write(html); w.document.close();
 }
 // The mapping panel: every style (stem + colour) on the open containers and
 // in the planner, what it resolved to and why; gaps first, with a fabric
