@@ -1,5 +1,11 @@
 <!DOCTYPE html>
 <!-- Changelog
+  2026-11-16  Fabric usage: a cloth whose colour is not the garment's is no longer taken as its
+              cloth (the storm grey PE apron was landing on black J54, 0 m in stock); such codes
+              go to "Codes and their cloth" to be mapped. Add container PO: the units column is
+              read by its heading ("Total Quantity"), so a paste of the whole container or air
+              freight file no longer takes Total Price as the units. AF129's 20 lines pasted that
+              way on 5 Nov are put back to their units once, on load (PO_REPAIRS). Keys unchanged.
   2026-11-05  Report for Clockwork: "Why we are sending this" and the "Please confirm" line removed;
               "How to read it" sits on the left. Stored data unchanged.
   2026-11-05  Fabric usage tab: new "Report for Clockwork" button opens a printable A4 report
@@ -1153,6 +1159,33 @@ function inHouseMonthlyPOs(){
   return Object.keys(byM).sort().map(function(k){ return byM[k]; });
 }
 
+// The units column of a pasted heading row: "Total Quantity", "Quantity" or
+// "Qty" (not "Carton Qty"); -1 when the row has none.
+function poQtyColumn(parts){
+  var best=-1;
+  parts.forEach(function(h,i){ var t=(h||'').trim().toLowerCase(); if(t==='total quantity'||t==='quantity'||t==='total qty') best=i; else if(best<0 && t==='qty') best=i; });
+  return best;
+}
+// Lines pasted with the wrong column (the £ total instead of the units):
+// put right once, on load, by the exact wrong value, so a corrected line is
+// never touched twice. AF129, 5 Nov 2026: 20 lines carried Total Price.
+var PO_REPAIRS=[{ref:'AF129', lines:{CJM0193LL03:[538.8,120], CT3082MM03:[8089.2,1890], CJM0193MM01:[668.8,160], CICJ0193MM01:[146,40],
+  CICJ0193SS03:[153.2,40], CICJ0193XL03:[153.2,40], CJM0193LL01:[501.6,120], CJM0193XL01:[41.8,10], CICJM0193MM01:[1232,320],
+  CICJM0193LL01:[616,160], CT0196SS26:[42.9,10], CT3082LL03:[3055.92,714], CT30824826:[50.3,10], CT3082MM26:[402.4,80],
+  CT3082SS03:[179.76,42], HT016003:[840,800], TWAPP281503:[447.12,324], OHAP300515:[2004,400], OHAP3005248:[2004,400], OHCJSCUMBRIA3601:[145,20]}}];
+function repairPOs(){
+  var n=0;
+  PO_REPAIRS.forEach(function(r){
+    cPOs.forEach(function(po){
+      if(po.ref!==r.ref) return;
+      var hit=false;
+      po.items.forEach(function(it){ var f=r.lines[(it.code||'').toUpperCase()]; if(f && Math.abs(it.qty-f[0])<0.005){ it.qty=f[1]; hit=true; n++; } });
+      if(hit && fabricReport) stampFabricCheck(po);   // the lines changed, check the cloth again
+    });
+  });
+  if(n) console.log('PO lines repaired:', n);
+  return n;
+}
 function savePO(){ if(!IS_EDITOR) return;
   var ref = (document.getElementById('poRef').value||'').trim();
   var date = document.getElementById('poDate').value;
@@ -1166,13 +1199,18 @@ function savePO(){ if(!IS_EDITOR) return;
     alert('A container with reference "'+ref+'" is already in the tracker.\n\nUse a unique reference (e.g. "'+ref+'b" for a top-up shipment), or delete the existing one first.');
     return;
   }
-  var lines = txt.split('\n'), items = [];
+  var lines = txt.split('\n'), items = [], qtyCol = -1;
   for(var i=0; i<lines.length; i++){
     var parts = lines[i].trim().split('\t');
     if(parts.length<2) continue;
     var code = (parts[0]||'').trim();
-    if(!code||code.toLowerCase()==='code'||code.toLowerCase()==='tibard stock code') continue;
-    var qty = parts.length>=5 ? pn(parts[parts.length-1]) : pn(parts[1]);
+    if(!code||code.toLowerCase()==='code'||code.toLowerCase()==='tibard stock code'){
+      // A heading row says which column is the units: "Total Quantity" on
+      // the container and air freight files (Price and Total Price sit to
+      // its right, so the last column is not the quantity there).
+      qtyCol = poQtyColumn(parts); continue;
+    }
+    var qty = qtyCol>=0 ? pn(parts[qtyCol]) : parts.length>=5 ? pn(parts[parts.length-1]) : pn(parts[1]);
     if(qty<=0) continue;
     items.push({code:code, qty:qty});
   }
@@ -2822,7 +2860,10 @@ function pickMain(cands, rowTokens){
   var alt=null, altSc=2.99;
   fabricRows().forEach(function(f){ if(fabricIsSecondary(f) || !fams[fabricFamily(f)]) return; var sc=colourScore(f,rowTokens); if(sc>altSc){ altSc=sc; alt=f; } });
   if(alt) return {f:alt, how:'colour of the same cloth'};
-  if(bestSc>0 || (mains.length===1 && bestSc>=-0.5)) return {f:best.f, how:'clockwork list'};
+  if(bestSc>0) return {f:best.f, how:'clockwork list'};
+  // One cloth on the list but its colour is not the garment's (Clockwork
+  // list the storm grey PE aprons under black J54): not a match, so the
+  // code goes to the "Codes and their cloth" panel to be mapped by hand.
   return null;
 }
 function pickMesh(cands, rowTokens, code, desc){
@@ -4002,6 +4043,7 @@ function applyState(s){
     if(!s.rows||!s.rows.length) return false;
     rows=s.rows; cPOs=s.cPOs||[]; bookedPOs=s.bookedPOs||[]; ensureUIDs(); nextContDate=s.nextContDate||null; airEtaDate=s.airEtaDate||null; customerMaps=s.customerMaps||{}; containerAliases=s.containerAliases||{};
     fabricReport=(s.fabricReport&&s.fabricReport.fabrics)?s.fabricReport:null; fabricMap=s.fabricMap||{}; _lineCache=null; _resolveCache={};
+    repairPOs();
     // Prices used to travel in this state; pricesLocalLoad takes them over once
     if(s.ckwPrices&&typeof s.ckwPrices==='object'&&Object.keys(s.ckwPrices).length) legacyPrices={ckwPrices:s.ckwPrices, ckwPricesAt:s.ckwPricesAt||s.savedAt||''};
     var sa=s.savedAt?new Date(s.savedAt).toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}):'';
@@ -4057,6 +4099,7 @@ function fetchSharedData(cb){
     if(s && s.rows && s.rows.length){
       rows = s.rows; ensureUIDs(); cPOs = s.cPOs || []; bookedPOs = s.bookedPOs || []; nextContDate = s.nextContDate || null; airEtaDate = s.airEtaDate || null; customerMaps = s.customerMaps || {}; containerAliases = s.containerAliases || {};
       fabricReport=(s.fabricReport&&s.fabricReport.fabrics)?s.fabricReport:null; fabricMap=s.fabricMap||{}; _lineCache=null; _resolveCache={};
+      repairPOs();
       var sa = s.savedAt ? new Date(s.savedAt).toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
       document.getElementById('lastUpdated').textContent = 'Published: ' + sa;
       var bd = document.getElementById('bannerDate');
