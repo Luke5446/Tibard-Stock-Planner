@@ -1,5 +1,9 @@
 <!DOCTYPE html>
 <!-- Changelog
+  2026-11-20  AF129 -> C129: eight codes with stock until C129 lands (11 Jan) are moved off the air
+              freight and onto C129 Revised once, on load (PO_MOVES): TWCT3082MM26 72, CT0196MM03 120,
+              CT3082XXL03 42, CT0196LL03 280, CJM0193MM01 160, CICJ0193MM01 40, CJM0193XL01 10,
+              CT30824826 10. data.json updated the same way. Keys unchanged.
   2026-11-16  Report for Clockwork: the container being planned is left out; only the open
               containers (what is on order) are counted. The tab itself still shows planned.
   2026-11-16  Fabric usage: a cloth whose colour is not the garment's is no longer taken as its
@@ -1175,6 +1179,32 @@ var PO_REPAIRS=[{ref:'AF129', lines:{CJM0193LL03:[538.8,120], CT3082MM03:[8089.2
   CICJ0193SS03:[153.2,40], CICJ0193XL03:[153.2,40], CJM0193LL01:[501.6,120], CJM0193XL01:[41.8,10], CICJM0193MM01:[1232,320],
   CICJM0193LL01:[616,160], CT0196SS26:[42.9,10], CT3082LL03:[3055.92,714], CT30824826:[50.3,10], CT3082MM26:[402.4,80],
   CT3082SS03:[179.76,42], HT016003:[840,800], TWAPP281503:[447.12,324], OHAP300515:[2004,400], OHAP3005248:[2004,400], OHCJSCUMBRIA3601:[145,20]}}];
+// Lines moved from one PO to another once, on load. 20 Nov 2026: C129 slipped to
+// 11 Jan (a quiet month) and these eight AF129 codes have stock until then, so
+// Luke moved them to the container. A line moves only while it sits on the
+// "from" PO at exactly this qty, so it cannot move twice; units are added to
+// the code's line on the "to" PO, or a new line is made. Both POs must exist.
+var PO_MOVES=[{from:'AF129', to:'C129 Revised', lines:{TWCT3082MM26:72, CT0196MM03:120, CT3082XXL03:42, CT0196LL03:280,
+  CJM0193MM01:160, CICJ0193MM01:40, CJM0193XL01:10, CT30824826:10}}];
+function movePOLines(){
+  var n=0;
+  PO_MOVES.forEach(function(m){
+    var src=null, dst=null;
+    cPOs.forEach(function(po){ if(po.ref===m.from) src=po; if(po.ref===m.to) dst=po; });
+    if(!src||!dst) return;
+    var hit=false;
+    src.items=src.items.filter(function(it){
+      var q=m.lines[(it.code||'').toUpperCase()];
+      if(!q || Math.abs(it.qty-q)>0.005) return true;
+      var line=null; dst.items.forEach(function(d){ if(!line && (d.code||'').toUpperCase()===(it.code||'').toUpperCase()) line=d; });
+      if(line) line.qty+=q; else dst.items.push({code:it.code, qty:q});
+      hit=true; n++; return false;
+    });
+    if(hit && fabricReport){ stampFabricCheck(src); stampFabricCheck(dst); }
+  });
+  if(n) console.log('PO lines moved:', n);
+  return n;
+}
 function repairPOs(){
   var n=0;
   PO_REPAIRS.forEach(function(r){
@@ -1186,6 +1216,7 @@ function repairPOs(){
     });
   });
   if(n) console.log('PO lines repaired:', n);
+  n+=movePOLines();
   return n;
 }
 function savePO(){ if(!IS_EDITOR) return;
