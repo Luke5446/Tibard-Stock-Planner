@@ -114,16 +114,14 @@ prices back. **Clear** (all saved data) leaves the price list alone.
   the Sage routine imports from the `B2B_PO_TIB` folder: the routine's own
   39-column layout, supplier CLO003, order date today, requested date the day
   the container lands, the reference typed when the file is made as the
-  supplier document number. A code that has a **BULK** item in Sage goes on
-  its BULK code to the Bulk warehouse; every other code, and every NHSP code
-  whatever Sage holds, goes as itself to Home. Which codes have a BULK item is
-  a list in the page (Sage's Bulk stock view of 18 Jun 2026 plus
-  WAGHTM016015); the BULK codes are on their way out, so it is not meant to
-  grow. The unit price is the price list, in USD. The Sage import fails on
+  supplier document number. Every line goes on the **home code to the Home
+  warehouse**: the BULK codes were retired on 27 Nov 2026 (all BULK stock
+  written off and added into the home codes in HOME), so containers are
+  bought in on the home codes. A code typed with a BULK prefix is stripped
+  back to its home code. The unit price is the price list, in USD. The Sage import fails on
   a blank price (C128, 19 Oct 2026), so a line with no price on the list is
   named before the file is made, and again in the summary, to be priced
-  first or filled in by hand; the summary also says how many lines went on
-  BULK and how many on the plain code. The line requested date is left blank,
+  first or filled in by hand. The line requested date is left blank,
   as it was on the C127 file that imported. The card notes when the file was
   made.
 
